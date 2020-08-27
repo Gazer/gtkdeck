@@ -35,9 +35,11 @@ int main(int argc, char **argv) {
     printf("%s\n", stream_deck_get_serial_number(devices->data)->str);
 
     stream_deck_reset_to_logo(devices->data);
-    for (int b = 0; b < 15; b++) {
+    for (int b = 1; b < 15; b++) {
         stream_deck_fill_color(devices->data, b, rand() % 255, rand() % 255, rand() % 255);
     }
+    stream_deck_set_image(devices->data, 0, "example.png");
+
     // stream_deck_fill_color(devices->data, 1, 0, 255, 0);
     // stream_deck_fill_color(devices->data, 2, 0, 0, 255);
 

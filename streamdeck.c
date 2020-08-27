@@ -459,8 +459,8 @@ GString *stream_deck_get_serial_number(StreamDeck *sd) {
 
 gboolean is_valid_color(int n) { return n >= 0 && n <= 255; }
 
-GBytes *imageToByteArray(unsigned char *image_buffer, int source_offset, int source_stride,
-                         int dest_offset, int image_size) {
+GBytes *imageToByteArray(StreamDeckPrivate *priv, unsigned char *image_buffer, int source_offset,
+                         int source_stride, int dest_offset, int image_size) {
     // 3 is the color mode, can be 3 or 4 if has alpha
     int color_mode = 4; // rgba
     int buffer_size = dest_offset + image_size * image_size * color_mode;
@@ -470,8 +470,9 @@ GBytes *imageToByteArray(unsigned char *image_buffer, int source_offset, int sou
         int row_offset = dest_offset + image_size * color_mode * y;
         for (int x = 0; x < image_size; x++) {
             // const { x: x2, y: y2 } = transformCoordinates(x, y)
-            int x2 = x;
-            int y2 = y;
+            // GEN2 { x: this.ICON_SIZE - x - 1, y: this.ICON_SIZE - y - 1 }
+            int x2 = priv->icon_size - x - 1;
+            int y2 = priv->icon_size - y - 1;
             int i = y2 * source_stride + source_offset + x2 * 3;
 
             unsigned char red = image_buffer[i];
@@ -503,27 +504,19 @@ GBytes *encode_jpeg(GBytes *data, int width, int height, int stride) {
         gdk_pixbuf_new_from_bytes(data, GDK_COLORSPACE_RGB, TRUE, 8, width, height, stride);
 
     gdk_pixbuf_save_to_buffer(pix, &buffer, &size, "jpeg", &error, NULL);
-    gdk_pixbuf_save(pix, "ver.jpg", "jpeg", &error, NULL);
+
     return g_bytes_new(buffer, size);
 }
 
 GBytes *convert_fill_image(StreamDeckPrivate *priv, unsigned char *buffer, int buffer_size,
                            int offset, int stride) {
-    GBytes *byte_buffer = imageToByteArray(buffer, offset, stride, 0, priv->icon_size);
+    printf("to convert = %d\n", buffer_size);
+    GBytes *byte_buffer = imageToByteArray(priv, buffer, offset, stride, 0, priv->icon_size);
 
     return encode_jpeg(byte_buffer, priv->icon_size, priv->icon_size, priv->icon_size * 4);
 }
 
-void fill_image_range(StreamDeckPrivate *priv, int key, unsigned char *buffer, int buffer_size,
-                      int offset, int stride) {
-    int bytes_size;
-    if (key < 0 || key >= priv->num_keys) {
-        g_error("Invalid key number");
-        return;
-    }
-
-    GBytes *image_bytes = convert_fill_image(priv, buffer, buffer_size, offset, stride);
-
+void write_image(StreamDeckPrivate *priv, int key, GBytes *image_bytes) {
     const unsigned char *data;
     gsize size;
     data = g_bytes_get_data(image_bytes, &size);
@@ -558,6 +551,19 @@ void fill_image_range(StreamDeckPrivate *priv, int key, unsigned char *buffer, i
     }
 }
 
+void fill_image_range(StreamDeckPrivate *priv, int key, unsigned char *buffer, int buffer_size,
+                      int offset, int stride) {
+    int bytes_size;
+    if (key < 0 || key >= priv->num_keys) {
+        g_error("Invalid key number");
+        return;
+    }
+
+    GBytes *image_bytes = convert_fill_image(priv, buffer, buffer_size, offset, stride);
+
+    write_image(priv, key, image_bytes);
+}
+
 void stream_deck_fill_color(StreamDeck *sd, int key, int r, int g, int b) {
     StreamDeckPrivate *priv = stream_deck_get_instance_private(sd);
     unsigned char buf[priv->icon_bytes];
@@ -583,4 +589,23 @@ void stream_deck_fill_color(StreamDeck *sd, int key, int r, int g, int b) {
     // TODO: Key may need to be transformed depending of the device key direction
 
     fill_image_range(priv, key, buf, priv->icon_bytes, 0, priv->icon_size * 3);
+}
+
+void stream_deck_set_image(StreamDeck *sd, int key, gchar *file) {
+    StreamDeckPrivate *priv = stream_deck_get_instance_private(sd);
+    GdkPixbuf *original = gdk_pixbuf_new_from_file(file, NULL);
+    GdkPixbuf *scaled;
+    gchar *buffer;
+    gsize size;
+    GError *error = NULL;
+
+    scaled = gdk_pixbuf_scale_simple(original, 72, 72, GDK_INTERP_BILINEAR);
+    scaled = gdk_pixbuf_flip(scaled, FALSE);
+    scaled = gdk_pixbuf_flip(scaled, TRUE);
+
+    gdk_pixbuf_save_to_buffer(scaled, &buffer, &size, "jpeg", &error, NULL);
+
+    GBytes *image_bytes = g_bytes_new(buffer, size);
+
+    write_image(priv, key, image_bytes);
 }
