@@ -5,6 +5,7 @@
 #include <unistd.h>
 
 GList *plugin_list = NULL;
+GtkBox *config_row;
 
 DeckPlugin *BUTTON_ACTION[15] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
@@ -14,10 +15,11 @@ void on_drag_data_get(GtkWidget *widget, GdkDragContext *drag_context, GtkSelect
                       guint info, guint time, gpointer user_data) {
     printf("Sending plugin name: color_button\n");
 
-    gtk_selection_data_set(sdata, GDK_SELECTION_TYPE_ATOM, 32, user_data, sizeof(user_data));
+    gtk_selection_data_set(sdata, GDK_SELECTION_TYPE_ATOM, 32, (const guchar *)&user_data,
+                           sizeof(gpointer));
 }
 
-void init_plugin_list(GtkListBox *list, GtkTargetEntry *target) {
+void init_plugin_list(GtkListBox *list) {
     GList *iter = plugin_list;
 
     while (iter != NULL) {
@@ -42,6 +44,31 @@ GtkWidget *grid_button(int k) {
     }
 }
 
+void show_config(GtkButton *button, gpointer data) {
+    GList *children, *iter;
+    GtkWidget *config_area;
+    DeckPlugin *plugin = DECK_PLUGIN(g_object_get_data(G_OBJECT(button), "plugin"));
+
+    printf("Need to show button config\n");
+
+    // Show Preview at the left
+    children = gtk_container_get_children(GTK_CONTAINER(config_row));
+    while (children != NULL) {
+        GtkWidget *preview_widget = GTK_WIDGET(children->data);
+        gtk_container_remove(GTK_CONTAINER(config_row), preview_widget);
+        children = children->next;
+    }
+    gtk_box_pack_start(GTK_BOX(config_row), deck_plugin_get_preview_widget(plugin), FALSE, TRUE, 5);
+
+    config_area = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
+    gtk_box_pack_start(GTK_BOX(config_row), GTK_WIDGET(config_area), TRUE, TRUE, 5);
+
+    // Show Plugin properties at the right
+    deck_plugin_get_config_widget(DECK_PLUGIN(plugin), GTK_BOX(config_area));
+
+    gtk_widget_show_all(GTK_WIDGET(config_row));
+}
+
 void on_drag_data_received(GtkWidget *wgt, GdkDragContext *context, int x, int y,
                            GtkSelectionData *sdata, guint info, guint time, gpointer userdata) {
     GtkGrid *grid = GTK_GRID(userdata);
@@ -50,9 +77,10 @@ void on_drag_data_received(GtkWidget *wgt, GdkDragContext *context, int x, int y
             GtkWidget *cell = gtk_grid_get_child_at(grid, left, top);
 
             if (cell == wgt) {
-                GtkWidget *box = gtk_event_box_new();
+                GtkWidget *box = gtk_button_new();
 
-                DeckPlugin *plugin = DECK_PLUGIN((void *)gtk_selection_data_get_data(sdata));
+                DeckPlugin *plugin = DECK_PLUGIN(*(gpointer *)gtk_selection_data_get_data(sdata));
+                plugin = deck_plugin_clone(plugin);
                 gtk_widget_destroy(cell);
                 BUTTON_ACTION[left + 5 * top] = plugin;
                 GtkWidget *widget = grid_button(left + 5 * top);
@@ -60,6 +88,8 @@ void on_drag_data_received(GtkWidget *wgt, GdkDragContext *context, int x, int y
                 gtk_drag_dest_set(box, GTK_DEST_DEFAULT_ALL, entries, 1, GDK_ACTION_COPY);
                 g_signal_connect(box, "drag-data-received", G_CALLBACK(on_drag_data_received),
                                  grid);
+                g_object_set_data(G_OBJECT(box), "plugin", plugin);
+                g_signal_connect(box, "clicked", G_CALLBACK(show_config), NULL);
 
                 gtk_container_add(GTK_CONTAINER(box), widget);
 
@@ -70,7 +100,7 @@ void on_drag_data_received(GtkWidget *wgt, GdkDragContext *context, int x, int y
     }
 }
 
-void init_button_grid(GtkGrid *grid, GtkTargetEntry *target) {
+void init_button_grid(GtkGrid *grid) {
 
     for (int top = 0; top < 3; top++) {
         for (int left = 0; left < 5; left++) {
@@ -90,23 +120,26 @@ void init_button_grid(GtkGrid *grid, GtkTargetEntry *target) {
 static void activate(GtkApplication *app, gpointer user_data) {
     GtkBuilder *builder;
     GtkWidget *window;
-    GtkListBox *plugin_list;
+    GtkListBox *list;
     GtkGrid *button_grid;
     GObject *o;
-    GtkTargetEntry *target = gtk_target_entry_new("plugin", 0, 0);
+
+    // Load and init plugins
+    plugin_list = g_list_append(plugin_list, test_plugin_new());
 
     builder = gtk_builder_new_from_file("main.glade");
 
     o = gtk_builder_get_object(builder, "main");
     window = GTK_WIDGET(o);
-    printf("%p\n", o);
     gtk_window_set_title(GTK_WINDOW(window), "Gtk Deck");
 
-    plugin_list = GTK_LIST_BOX(gtk_builder_get_object(builder, "plugin_list"));
-    init_plugin_list(plugin_list, target);
+    config_row = GTK_BOX(gtk_builder_get_object(builder, "config_row"));
+
+    list = GTK_LIST_BOX(gtk_builder_get_object(builder, "plugin_list"));
+    init_plugin_list(list);
 
     button_grid = GTK_GRID(gtk_builder_get_object(builder, "button_grid"));
-    init_button_grid(button_grid, target);
+    init_button_grid(button_grid);
 
     g_object_unref(builder);
 
@@ -120,9 +153,6 @@ int main(int argc, char **argv) {
     GtkBuilder *builder;
     GList *devices;
     int status;
-
-    // Load and init plugins
-    plugin_list = g_list_append(plugin_list, test_plugin_new());
 
     // devices = stream_deck_list();
 

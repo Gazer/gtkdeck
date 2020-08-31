@@ -15,13 +15,13 @@ G_BEGIN_DECLS
  * Type declaration.
  */
 #define DECK_TYPE_PLUGIN deck_plugin_get_type()
-GLIB_AVAILABLE_IN_2_32
 G_DECLARE_DERIVABLE_TYPE(DeckPlugin, deck_plugin, DECK, PLUGIN, GObject)
 
 struct _DeckPluginClass {
     GObjectClass parent;
     /* class members */
-    GtkWidget *(*preview_widget)(DeckPlugin *self);
+    DeckPlugin *(*clone)(DeckPlugin *self);
+    void (*config_widget)(DeckPlugin *self, GtkBox *parent);
     // void (*do_action_public_pure_virtual)(MamanBar *self, guint8 i);
 
     /* Padding to allow adding up to 12 new virtual functions without
@@ -37,8 +37,10 @@ struct _DeckPluginClass {
  * Method definitions.
  */
 GType deck_plugin_get_type();
+DeckPlugin *deck_plugin_clone(DeckPlugin *plugin);
 const gchar *deck_plugin_get_name(DeckPlugin *plugin);
 GtkWidget *deck_plugin_get_preview_widget(DeckPlugin *plugin);
+void deck_plugin_get_config_widget(DeckPlugin *plugin, GtkBox *parent);
 
 G_END_DECLS
 

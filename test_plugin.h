@@ -14,7 +14,6 @@ G_BEGIN_DECLS
  * Type declaration.
  */
 #define TEST_TYPE_PLUGIN test_plugin_get_type()
-GLIB_AVAILABLE_IN_2_32
 G_DECLARE_FINAL_TYPE(TestPlugin, test_plugin, TEST, PLUGIN, DeckPlugin)
 
 struct _TestluginClass {
