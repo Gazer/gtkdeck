@@ -1,8 +1,12 @@
+#include "deck_plugin.h"
 #include "streamdeck.h"
+#include "test_plugin.h"
 #include <gtk/gtk.h>
 #include <unistd.h>
 
-int BUTTON_ACTION[15] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+GList *plugin_list = NULL;
+
+DeckPlugin *BUTTON_ACTION[15] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
 static GtkTargetEntry entries[] = {{"text/plain", GTK_TARGET_SAME_APP, 0}};
 
@@ -10,33 +14,32 @@ void on_drag_data_get(GtkWidget *widget, GdkDragContext *drag_context, GtkSelect
                       guint info, guint time, gpointer user_data) {
     printf("Sending plugin name: color_button\n");
 
-    gtk_selection_data_set_text(sdata, "color_button", -1);
+    gtk_selection_data_set(sdata, GDK_SELECTION_TYPE_ATOM, 32, user_data, sizeof(user_data));
 }
 
-void init_plugin_list(GtkListBox *plugin_list, GtkTargetEntry *target) {
-    GtkWidget *color_button;
+void init_plugin_list(GtkListBox *list, GtkTargetEntry *target) {
+    GList *iter = plugin_list;
 
-    color_button = gtk_button_new_with_label("Color Button");
-    // gtk_label_set_justify(GTK_LABEL(color_button), GTK_JUSTIFY_LEFT);
-    // gtk_label_set_xalign(GTK_LABEL(color_button), 0);
+    while (iter != NULL) {
+        DeckPlugin *plugin = DECK_PLUGIN(iter->data);
+        GtkWidget *color_button;
 
-    gtk_drag_source_set(color_button, GDK_BUTTON1_MASK, entries, 1, GDK_ACTION_COPY);
-    g_signal_connect(color_button, "drag-data-get", G_CALLBACK(on_drag_data_get), NULL);
-    gtk_list_box_insert(plugin_list, color_button, -1);
-}
+        color_button = gtk_button_new_with_label(deck_plugin_get_name(plugin));
 
-GtkWidget *grid_button(int k) {
-    if (BUTTON_ACTION[k] == 0) {
-        return gtk_button_new_with_label("X");
-    } else {
-        return gtk_image_new_from_file("tini.png");
+        gtk_drag_source_set(color_button, GDK_BUTTON1_MASK, entries, 1, GDK_ACTION_COPY);
+        g_signal_connect(color_button, "drag-data-get", G_CALLBACK(on_drag_data_get), plugin);
+        gtk_list_box_insert(list, color_button, -1);
+
+        iter = iter->next;
     }
 }
 
-gboolean on_plugin_drop(GtkWidget *widget, GdkDragContext *context, int x, int y, guint time,
-                        gpointer user_data) {
-    printf("on_plugin_drop\n");
-    return TRUE;
+GtkWidget *grid_button(int k) {
+    if (BUTTON_ACTION[k] == NULL) {
+        return gtk_button_new_with_label("X");
+    } else {
+        return deck_plugin_get_preview_widget(BUTTON_ACTION[k]);
+    }
 }
 
 void on_drag_data_received(GtkWidget *wgt, GdkDragContext *context, int x, int y,
@@ -47,22 +50,24 @@ void on_drag_data_received(GtkWidget *wgt, GdkDragContext *context, int x, int y
             GtkWidget *cell = gtk_grid_get_child_at(grid, left, top);
 
             if (cell == wgt) {
+                GtkWidget *box = gtk_event_box_new();
+
+                DeckPlugin *plugin = DECK_PLUGIN((void *)gtk_selection_data_get_data(sdata));
                 gtk_widget_destroy(cell);
-                printf("CAMBIO EN %d\n", left + 5 * top);
-                BUTTON_ACTION[left + 5 * top] = 1;
+                BUTTON_ACTION[left + 5 * top] = plugin;
                 GtkWidget *widget = grid_button(left + 5 * top);
 
-                gtk_drag_dest_set(widget, GTK_DEST_DEFAULT_ALL, entries, 1, GDK_ACTION_COPY);
-                // g_signal_connect(widget, "drag-drop", G_CALLBACK(on_plugin_drop), NULL);
-                g_signal_connect(widget, "drag-data-received", G_CALLBACK(on_drag_data_received),
+                gtk_drag_dest_set(box, GTK_DEST_DEFAULT_ALL, entries, 1, GDK_ACTION_COPY);
+                g_signal_connect(box, "drag-data-received", G_CALLBACK(on_drag_data_received),
                                  grid);
 
-                gtk_grid_attach(grid, widget, left, top, 1, 1);
-                gtk_widget_show(widget);
+                gtk_container_add(GTK_CONTAINER(box), widget);
+
+                gtk_grid_attach(grid, box, left, top, 1, 1);
+                gtk_widget_show_all(box);
             }
         }
     }
-    printf("ACA PluginName=%s\n", gtk_selection_data_get_text(sdata));
 }
 
 void init_button_grid(GtkGrid *grid, GtkTargetEntry *target) {
@@ -115,6 +120,9 @@ int main(int argc, char **argv) {
     GtkBuilder *builder;
     GList *devices;
     int status;
+
+    // Load and init plugins
+    plugin_list = g_list_append(plugin_list, test_plugin_new());
 
     // devices = stream_deck_list();
 
