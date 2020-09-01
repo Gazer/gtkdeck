@@ -41,6 +41,7 @@ DeckPlugin *deck_plugin_clone(DeckPlugin *plugin);
 const gchar *deck_plugin_get_name(DeckPlugin *plugin);
 GtkWidget *deck_plugin_get_preview_widget(DeckPlugin *plugin);
 void deck_plugin_get_config_widget(DeckPlugin *plugin, GtkBox *parent);
+cairo_surface_t *deck_plugin_get_surface(DeckPlugin *plugin);
 
 G_END_DECLS
 

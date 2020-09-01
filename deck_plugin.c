@@ -88,9 +88,20 @@ DeckPlugin *deck_plugin_clone(DeckPlugin *self) {
     return klass->clone(self);
 }
 
+void on_preview_updated(GObject *gobject, GParamSpec *pspec, gpointer user_data) {
+    DeckPlugin *self = DECK_PLUGIN(gobject);
+
+    DeckPluginPrivate *priv = deck_plugin_get_instance_private(self);
+    GtkImage *image = GTK_IMAGE(user_data);
+
+    gtk_image_set_from_surface(image, priv->surface);
+}
+
 GtkWidget *deck_plugin_get_preview_widget(DeckPlugin *self) {
     DeckPluginPrivate *priv = deck_plugin_get_instance_private(self);
     GtkWidget *preview = gtk_image_new_from_surface(priv->surface);
+
+    g_signal_connect(self, "notify::preview", G_CALLBACK(on_preview_updated), preview);
 
     return preview;
 }
@@ -109,4 +120,9 @@ void deck_plugin_get_config_widget(DeckPlugin *self, GtkBox *parent) {
     g_return_if_fail(klass->config_widget != NULL);
     printf("call virtual\n");
     return klass->config_widget(self, parent);
+}
+
+cairo_surface_t *deck_plugin_get_surface(DeckPlugin *self) {
+    DeckPluginPrivate *priv = deck_plugin_get_instance_private(self);
+    return priv->surface;
 }

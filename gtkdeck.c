@@ -45,9 +45,13 @@ GtkWidget *grid_button(int k) {
 }
 
 void show_config(GtkButton *button, gpointer data) {
+    StreamDeck *deck = STREAM_DECK(data);
     GList *children, *iter;
     GtkWidget *config_area;
     DeckPlugin *plugin = DECK_PLUGIN(g_object_get_data(G_OBJECT(button), "plugin"));
+
+    printf("read button states\n");
+    stream_deck_read_key_states(deck);
 
     printf("Need to show button config\n");
 
@@ -69,9 +73,19 @@ void show_config(GtkButton *button, gpointer data) {
     gtk_widget_show_all(GTK_WIDGET(config_row));
 }
 
+void on_deck_preview_update(GObject *gobject, GParamSpec *pspec, gpointer user_data) {
+    StreamDeck *deck = STREAM_DECK(user_data);
+    DeckPlugin *self = DECK_PLUGIN(gobject);
+    cairo_surface_t *surface = deck_plugin_get_surface(self);
+
+    stream_deck_set_image_from_surface(deck, 0, surface);
+}
+
 void on_drag_data_received(GtkWidget *wgt, GdkDragContext *context, int x, int y,
                            GtkSelectionData *sdata, guint info, guint time, gpointer userdata) {
     GtkGrid *grid = GTK_GRID(userdata);
+    StreamDeck *deck = STREAM_DECK(g_object_get_data(G_OBJECT(grid), "deck"));
+
     for (int top = 0; top < 3; top++) {
         for (int left = 0; left < 5; left++) {
             GtkWidget *cell = gtk_grid_get_child_at(grid, left, top);
@@ -81,15 +95,20 @@ void on_drag_data_received(GtkWidget *wgt, GdkDragContext *context, int x, int y
 
                 DeckPlugin *plugin = DECK_PLUGIN(*(gpointer *)gtk_selection_data_get_data(sdata));
                 plugin = deck_plugin_clone(plugin);
+
                 gtk_widget_destroy(cell);
                 BUTTON_ACTION[left + 5 * top] = plugin;
                 GtkWidget *widget = grid_button(left + 5 * top);
+
+                // If plugin updates, send the new image to the device
+                g_signal_connect(plugin, "notify::preview", G_CALLBACK(on_deck_preview_update),
+                                 deck);
 
                 gtk_drag_dest_set(box, GTK_DEST_DEFAULT_ALL, entries, 1, GDK_ACTION_COPY);
                 g_signal_connect(box, "drag-data-received", G_CALLBACK(on_drag_data_received),
                                  grid);
                 g_object_set_data(G_OBJECT(box), "plugin", plugin);
-                g_signal_connect(box, "clicked", G_CALLBACK(show_config), NULL);
+                g_signal_connect(box, "clicked", G_CALLBACK(show_config), deck);
 
                 gtk_container_add(GTK_CONTAINER(box), widget);
 
@@ -100,7 +119,8 @@ void on_drag_data_received(GtkWidget *wgt, GdkDragContext *context, int x, int y
     }
 }
 
-void init_button_grid(GtkGrid *grid) {
+void init_button_grid(GtkGrid *grid, StreamDeck *deck) {
+    g_object_set_data(G_OBJECT(grid), "deck", deck);
 
     for (int top = 0; top < 3; top++) {
         for (int left = 0; left < 5; left++) {
@@ -117,17 +137,32 @@ void init_button_grid(GtkGrid *grid) {
     }
 }
 
+static void init_device_info(GtkBuilder *builder, StreamDeck *deck) {
+    GtkLabel *label = GTK_LABEL(gtk_builder_get_object(builder, "device_info"));
+    GString *serial = stream_deck_get_serial_number(deck);
+    GString *text = g_string_new(NULL);
+
+    g_string_printf(text, "StreamDeck (%s)", serial->str);
+
+    gtk_label_set_text(label, g_string_free(text, FALSE));
+}
+
 static void activate(GtkApplication *app, gpointer user_data) {
     GtkBuilder *builder;
     GtkWidget *window;
     GtkListBox *list;
     GtkGrid *button_grid;
     GObject *o;
+    GList *devices = (GList *)user_data;
+
+    StreamDeck *device = STREAM_DECK(devices->data);
 
     // Load and init plugins
     plugin_list = g_list_append(plugin_list, test_plugin_new());
 
     builder = gtk_builder_new_from_file("main.glade");
+
+    init_device_info(builder, device);
 
     o = gtk_builder_get_object(builder, "main");
     window = GTK_WIDGET(o);
@@ -139,7 +174,7 @@ static void activate(GtkApplication *app, gpointer user_data) {
     init_plugin_list(list);
 
     button_grid = GTK_GRID(gtk_builder_get_object(builder, "button_grid"));
-    init_button_grid(button_grid);
+    init_button_grid(button_grid, device);
 
     g_object_unref(builder);
 
@@ -154,11 +189,11 @@ int main(int argc, char **argv) {
     GList *devices;
     int status;
 
-    // devices = stream_deck_list();
+    devices = stream_deck_list();
 
-    // printf("Found %d devices\n", g_list_length(devices));
+    printf("Found %d devices\n", g_list_length(devices));
 
-    // stream_deck_info(devices->data);
+    stream_deck_info(devices->data);
     // printf("%s\n", stream_deck_get_firmware_version(devices->data)->str);
     // printf("%s\n", stream_deck_get_serial_number(devices->data)->str);
 
@@ -180,7 +215,7 @@ int main(int argc, char **argv) {
     // stream_deck_set_brightness(devices->data, 100);
 
     app = gtk_application_new("ar.com.p39.gtkdeck", G_APPLICATION_FLAGS_NONE);
-    g_signal_connect(app, "activate", G_CALLBACK(activate), NULL);
+    g_signal_connect(app, "activate", G_CALLBACK(activate), devices);
 
     status = g_application_run(G_APPLICATION(app), argc, argv);
 

@@ -10,6 +10,8 @@ typedef struct _StreamDeckPrivate {
     libusb_device *device;
     libusb_device_handle *handle;
     int output_endpoint;
+    int input_endpoint;
+    int input_ep_max_packet_size;
     int interface;
     int nb_ifaces;
 
@@ -105,6 +107,7 @@ static void stream_deck_init(StreamDeck *self) {
     priv->output_endpoint = 0;
 }
 
+// https://github.com/libusb/hidapi/blob/ca1a2d6efae8d372587f4c13f60632916681d408/libusb/hid.c
 static void stream_deck_constructed(GObject *object) {
     struct libusb_device_descriptor dev_desc;
     struct libusb_config_descriptor *conf_desc;
@@ -145,11 +148,11 @@ static void stream_deck_constructed(GObject *object) {
                         (ep->bEndpointAddress & LIBUSB_ENDPOINT_DIR_MASK) == LIBUSB_ENDPOINT_IN;
 
                     /* Decide whether to use it for input or output. */
-                    // if (dev->input_endpoint == 0 && is_interrupt && is_input) {
-                    //     /* Use this endpoint for INPUT */
-                    //     dev->input_endpoint = ep->bEndpointAddress;
-                    //     dev->input_ep_max_packet_size = ep->wMaxPacketSize;
-                    // }
+                    if (priv->input_endpoint == 0 && is_interrupt && is_input) {
+                        /* Use this endpoint for INPUT */
+                        priv->input_endpoint = ep->bEndpointAddress;
+                        priv->input_ep_max_packet_size = ep->wMaxPacketSize;
+                    }
                     if (priv->output_endpoint == 0 && is_interrupt && is_output) {
                         /* Use this endpoint for OUTPUT */
                         printf("Endpoint %d\n", ep->bEndpointAddress);
@@ -355,6 +358,108 @@ int get_feature_report(StreamDeckPrivate *priv, unsigned char *data, size_t leng
         res++;
 
     return res;
+}
+
+/* Helper function, to simplify hid_read().
+   This should be called with dev->mutex locked. */
+static int return_data(StreamDeckPrivate *priv, unsigned char *data, size_t length) {
+    /* Copy the data out of the linked list item (rpt) into the
+       return buffer (data), and delete the liked list item. */
+    // struct input_report *rpt = priv->input_reports;
+    // size_t len = (length < rpt->len) ? length : rpt->len;
+    // if (len > 0)
+    //     memcpy(data, rpt->data, len);
+    // dev->input_reports = rpt->next;
+    // free(rpt->data);
+    // free(rpt);
+    // return len;
+    return 0;
+}
+
+int usb_read_timeout(StreamDeckPrivate *priv, unsigned char *data, size_t length,
+                     int milliseconds) {
+    int bytes_read = -1;
+
+    // #if 0
+    int transferred;
+    int res = libusb_interrupt_transfer(priv->handle, priv->input_endpoint, data, length,
+                                        &transferred, 5000);
+    printf("transferred: %d\n", transferred);
+    return transferred;
+    // #endif
+
+    //     pthread_mutex_lock(&dev->mutex);
+    //     pthread_cleanup_push(&cleanup_mutex, dev);
+
+    //     /* There's an input report queued up. Return it. */
+    //     if (dev->input_reports) {
+    //         /* Return the first one */
+    //         bytes_read = return_data(dev, data, length);
+    //         goto ret;
+    //     }
+
+    //     if (dev->shutdown_thread) {
+    //         /* This means the device has been disconnected.
+    //            An error code of -1 should be returned. */
+    //         bytes_read = -1;
+    //         goto ret;
+    //     }
+
+    //     if (milliseconds == -1) {
+    //         /* Blocking */
+    //         while (!dev->input_reports && !dev->shutdown_thread) {
+    //             pthread_cond_wait(&dev->condition, &dev->mutex);
+    //         }
+    //         if (dev->input_reports) {
+    //             bytes_read = return_data(dev, data, length);
+    //         }
+    //     } else if (milliseconds > 0) {
+    //         /* Non-blocking, but called with timeout. */
+    //         int res;
+    //         struct timespec ts;
+    //         clock_gettime(CLOCK_REALTIME, &ts);
+    //         ts.tv_sec += milliseconds / 1000;
+    //         ts.tv_nsec += (milliseconds % 1000) * 1000000;
+    //         if (ts.tv_nsec >= 1000000000L) {
+    //             ts.tv_sec++;
+    //             ts.tv_nsec -= 1000000000L;
+    //         }
+
+    //         while (!dev->input_reports && !dev->shutdown_thread) {
+    //             res = pthread_cond_timedwait(&dev->condition, &dev->mutex, &ts);
+    //             if (res == 0) {
+    //                 if (dev->input_reports) {
+    //                     bytes_read = return_data(dev, data, length);
+    //                     break;
+    //                 }
+
+    //                 /* If we're here, there was a spurious wake up
+    //                    or the read thread was shutdown. Run the
+    //                    loop again (ie: don't break). */
+    //             } else if (res == ETIMEDOUT) {
+    //                 /* Timed out. */
+    //                 bytes_read = 0;
+    //                 break;
+    //             } else {
+    //                 /* Error. */
+    //                 bytes_read = -1;
+    //                 break;
+    //             }
+    //         }
+    //     } else {
+    //         /* Purely non-blocking */
+    //         bytes_read = 0;
+    //     }
+
+    // ret:
+    //     pthread_mutex_unlock(&dev->mutex);
+    //     pthread_cleanup_pop(0);
+
+    //     return bytes_read;
+}
+
+int usb_read(StreamDeckPrivate *priv, unsigned char *data, size_t length) {
+    return usb_read_timeout(priv, data, length, -1 /*priv->blocking ? -1 : 0*/);
 }
 
 int usb_write(StreamDeckPrivate *priv, const unsigned char *data, size_t length) {
@@ -591,9 +696,8 @@ void stream_deck_fill_color(StreamDeck *sd, int key, int r, int g, int b) {
     fill_image_range(priv, key, buf, priv->icon_bytes, 0, priv->icon_size * 3);
 }
 
-void stream_deck_set_image(StreamDeck *sd, int key, gchar *file) {
+void generic_set_image(StreamDeck *sd, int key, GdkPixbuf *original) {
     StreamDeckPrivate *priv = stream_deck_get_instance_private(sd);
-    GdkPixbuf *original = gdk_pixbuf_new_from_file(file, NULL);
     GdkPixbuf *scaled;
     gchar *buffer;
     gsize size;
@@ -608,4 +712,28 @@ void stream_deck_set_image(StreamDeck *sd, int key, gchar *file) {
     GBytes *image_bytes = g_bytes_new(buffer, size);
 
     write_image(priv, key, image_bytes);
+}
+
+void stream_deck_set_image_from_file(StreamDeck *sd, int key, gchar *file) {
+    GdkPixbuf *original = gdk_pixbuf_new_from_file(file, NULL);
+
+    generic_set_image(sd, key, original);
+}
+
+void stream_deck_set_image_from_surface(StreamDeck *sd, int key, cairo_surface_t *surface) {
+    GdkPixbuf *original = gdk_pixbuf_get_from_surface(surface, 0, 0, 72, 72);
+
+    generic_set_image(sd, key, original);
+}
+
+void stream_deck_read_key_states(StreamDeck *sd) {
+    StreamDeckPrivate *priv = stream_deck_get_instance_private(sd);
+    unsigned char key_state[4 + 15];
+
+    int n = usb_read_timeout(priv, key_state, 4 + 15, 0);
+
+    printf("%d\n", n);
+    for (int i = 0; i < 15; i++) {
+        printf("%d = %d\n", i, key_state[4 + i]);
+    }
 }
