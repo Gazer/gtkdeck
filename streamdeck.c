@@ -1,19 +1,13 @@
 #include "streamdeck.h"
 #include <gdk-pixbuf/gdk-pixbuf.h>
 #include <glib-object.h>
-#include <libusb-1.0/libusb.h>
+#include <hidapi.h>
 
 #define LTR 0
 #define RTL 1
 
 typedef struct _StreamDeckPrivate {
-    libusb_device *device;
-    libusb_device_handle *handle;
-    int output_endpoint;
-    int input_endpoint;
-    int input_ep_max_packet_size;
-    int interface;
-    int nb_ifaces;
+    hid_device *handle;
 
     // properties
     int rows;
@@ -52,7 +46,7 @@ static void stream_deck_set_property(GObject *object, guint property_id, const G
 
     switch ((StreamDeckProperty)property_id) {
     case DEVICE:
-        priv->device = g_value_peek_pointer(value);
+        priv->handle = g_value_peek_pointer(value);
         break;
     case ROWS:
         priv->rows = g_value_get_int(value);
@@ -104,14 +98,10 @@ static void stream_deck_init(StreamDeck *self) {
     priv->icon_size = 0;
     priv->key_direction = 0;
     priv->key_data_offset = 0;
-    priv->output_endpoint = 0;
 }
 
 // https://github.com/libusb/hidapi/blob/ca1a2d6efae8d372587f4c13f60632916681d408/libusb/hid.c
 static void stream_deck_constructed(GObject *object) {
-    struct libusb_device_descriptor dev_desc;
-    struct libusb_config_descriptor *conf_desc;
-
     StreamDeckPrivate *priv = stream_deck_get_instance_private(STREAM_DECK(object));
 
     // Probably here we need to know the model/generation
@@ -119,58 +109,6 @@ static void stream_deck_constructed(GObject *object) {
     priv->icon_bytes = priv->icon_size * priv->icon_size * 3;
     priv->max_packet_size = 1024;
     priv->packet_header_size = 8;
-
-    libusb_get_device_descriptor(priv->device, &dev_desc);
-    libusb_get_config_descriptor(priv->device, 0, &conf_desc);
-    priv->nb_ifaces = conf_desc->bNumInterfaces;
-
-    libusb_open(priv->device, &(priv->handle));
-    // TODO: Handle error codes from libusb_open
-
-    for (int j = 0; j < conf_desc->bNumInterfaces; j++) {
-        const struct libusb_interface *intf = &conf_desc->interface[j];
-        for (int k = 0; k < intf->num_altsetting; k++) {
-            const struct libusb_interface_descriptor *intf_desc;
-            intf_desc = &intf->altsetting[k];
-            if (intf_desc->bInterfaceClass == LIBUSB_CLASS_HID) {
-                priv->interface = intf_desc->bInterfaceNumber;
-
-                for (int i = 0; i < intf_desc->bNumEndpoints; i++) {
-                    const struct libusb_endpoint_descriptor *ep = &intf_desc->endpoint[i];
-
-                    /* Determine the type and direction of this
-                       endpoint. */
-                    int is_interrupt = (ep->bmAttributes & LIBUSB_TRANSFER_TYPE_MASK) ==
-                                       LIBUSB_TRANSFER_TYPE_INTERRUPT;
-                    int is_output =
-                        (ep->bEndpointAddress & LIBUSB_ENDPOINT_DIR_MASK) == LIBUSB_ENDPOINT_OUT;
-                    int is_input =
-                        (ep->bEndpointAddress & LIBUSB_ENDPOINT_DIR_MASK) == LIBUSB_ENDPOINT_IN;
-
-                    /* Decide whether to use it for input or output. */
-                    if (priv->input_endpoint == 0 && is_interrupt && is_input) {
-                        /* Use this endpoint for INPUT */
-                        priv->input_endpoint = ep->bEndpointAddress;
-                        priv->input_ep_max_packet_size = ep->wMaxPacketSize;
-                    }
-                    if (priv->output_endpoint == 0 && is_interrupt && is_output) {
-                        /* Use this endpoint for OUTPUT */
-                        printf("Endpoint %d\n", ep->bEndpointAddress);
-                        priv->output_endpoint = ep->bEndpointAddress;
-                    }
-                }
-            }
-        }
-    }
-
-    for (int i = 0; i < priv->nb_ifaces; i++) {
-        // r =
-        // TODO: Errors!
-        libusb_claim_interface(priv->handle, i);
-        // if (r != LIBUSB_SUCCESS) {
-        //     printf("   Failed.\n");
-        // }
-    }
 
     G_OBJECT_CLASS(stream_deck_parent_class)->constructed(object);
 }
@@ -181,11 +119,7 @@ static void stream_deck_finalize(GObject *obj) {
 
     printf("stream_deck_finalize\n");
 
-    for (int iface = 0; iface < priv->nb_ifaces; iface++) {
-        libusb_release_interface(priv->handle, iface);
-    }
-
-    libusb_close(priv->handle);
+    hid_close(priv->handle);
 
     /* Always chain up to the parent finalize function to complete object
      * destruction. */
@@ -224,287 +158,55 @@ static void stream_deck_class_init(StreamDeckClass *klass) {
     g_object_class_install_properties(object_class, N_PROPERTIES, obj_properties);
 }
 
-StreamDeck *stream_deck_new(libusb_device *device, int rows, int columns, int icon_size,
+StreamDeck *stream_deck_new(hid_device *handle, int rows, int columns, int icon_size,
                             int key_direction, int key_data_offset) {
-    StreamDeck *deck = g_object_new(STREAM_TYPE_DECK, "device", device, "rows", rows, "columns",
+    StreamDeck *deck = g_object_new(STREAM_TYPE_DECK, "device", handle, "rows", rows, "columns",
                                     columns, "icon_size", icon_size, "key_direction", key_direction,
                                     "key_data_offset", key_data_offset, NULL);
 
     return deck;
 }
 
-GList *stream_deck_list() {
-    int r;
-    ssize_t size;
-    struct libusb_device **list;
-    GList *device_list = NULL;
+void stream_deck_exit() { hid_exit(); }
 
-    r = libusb_init(NULL);
-    if (r < 0) {
+GList *stream_deck_list() {
+    int res;
+    hid_device *handle;
+    GList *device_list = NULL;
+    StreamDeck *deck;
+
+    res = hid_init();
+    if (res < 0) {
         printf("Can not initialize LIBUSB");
         return NULL;
     }
 
-    size = libusb_get_device_list(NULL, &list);
-
-    for (int i = 0; i < size; i++) {
-        struct libusb_device_descriptor dev_desc;
-
-        libusb_get_device_descriptor(list[i], &dev_desc);
-
-        if (dev_desc.idVendor == 0x0fd9) {
-            StreamDeck *deck;
-
-            printf("Found StreamDeck device\n");
-
-            if (dev_desc.idProduct == 0x0060) {
-                printf("             model: Original\n");
-            } else if (dev_desc.idProduct == 0x0063) {
-                printf("             model: Mini\n");
-            } else if (dev_desc.idProduct == 0x006c) {
-                printf("             model: XL\n");
-            } else if (dev_desc.idProduct == 0x006d) {
-                deck = stream_deck_new(list[i], 3, 5, 72, LTR, 4);
-            }
-
-            device_list = g_list_append(device_list, deck);
-        }
-    }
-
-    libusb_free_device_list(list, 1);
-
-    return device_list;
+    handle = hid_open(0x0fd9, 0x006d, NULL);
+    // hid_set_nonblocking(handle, 1);
+    deck = stream_deck_new(handle, 3, 5, 72, LTR, 4);
+    device_list = g_list_append(device_list, deck);
 }
 
 void stream_deck_info(StreamDeck *sd) {
-    struct libusb_device_descriptor dev_desc;
     StreamDeckPrivate *priv = stream_deck_get_instance_private(sd);
+    wchar_t wstr[255];
+    int res;
 
-    libusb_get_device_descriptor(priv->device, &dev_desc);
+    printf("Found StreamDeck device\n");
+    res = hid_get_manufacturer_string(priv->handle, wstr, 255);
+    wprintf(L"Manufacturer String: %s\n", wstr);
 
-    if (dev_desc.idVendor == 0x0fd9) {
-        printf("Found StreamDeck device\n");
+    // Read the Product String
+    res = hid_get_product_string(priv->handle, wstr, 255);
+    wprintf(L"Product String: %s\n", wstr);
 
-        if (dev_desc.idProduct == 0x0060) {
-            printf("             model: Original\n");
-        } else if (dev_desc.idProduct == 0x0063) {
-            printf("             model: Mini\n");
-        } else if (dev_desc.idProduct == 0x006c) {
-            printf("             model: XL\n");
-        } else if (dev_desc.idProduct == 0x006d) {
-            printf("             model: Original V2\n");
-        }
+    // Read the Serial Number String
+    res = hid_get_serial_number_string(priv->handle, wstr, 255);
+    wprintf(L"Serial Number String: (%d) %s\n", wstr[0], wstr);
 
-        printf("            length: %d\n", dev_desc.bLength);
-        printf("      device class: %d\n", dev_desc.bDeviceClass);
-        printf("               S/N: %d\n", dev_desc.iSerialNumber);
-        printf("           VID:PID: %04X:%04X\n", dev_desc.idVendor, dev_desc.idProduct);
-        printf("         bcdDevice: %04X\n", dev_desc.bcdDevice);
-        printf("   iMan:iProd:iSer: %d:%d:%d\n", dev_desc.iManufacturer, dev_desc.iProduct,
-               dev_desc.iSerialNumber);
-        printf("          nb confs: %d\n", dev_desc.bNumConfigurations);
-    } else {
-        printf("BAD \n");
-    }
-}
-
-int send_feature_report(StreamDeckPrivate *priv, const unsigned char *data, size_t length) {
-    int res = -1;
-    int skipped_report_id = 0;
-    int report_number = data[0];
-
-    if (report_number == 0x0) {
-        data++;
-        length--;
-        skipped_report_id = 1;
-    }
-
-    res = libusb_control_transfer(
-        priv->handle, LIBUSB_REQUEST_TYPE_CLASS | LIBUSB_RECIPIENT_INTERFACE | LIBUSB_ENDPOINT_OUT,
-        0x09 /*HID set_report*/, (3 /*HID feature*/ << 8) | report_number, priv->interface,
-        (unsigned char *)data, length, 1000 /*timeout millis*/);
-
-    if (res < 0)
-        return res;
-
-    /* Account for the report ID */
-    if (skipped_report_id)
-        length++;
-
-    return length;
-}
-
-int get_feature_report(StreamDeckPrivate *priv, unsigned char *data, size_t length) {
-    int res = -1;
-    int skipped_report_id = 0;
-    int report_number = data[0];
-
-    if (report_number == 0x0) {
-        /* Offset the return buffer by 1, so that the report ID
-           will remain in byte 0. */
-        data++;
-        length--;
-        skipped_report_id = 1;
-    }
-    res = libusb_control_transfer(
-        priv->handle, LIBUSB_REQUEST_TYPE_CLASS | LIBUSB_RECIPIENT_INTERFACE | LIBUSB_ENDPOINT_IN,
-        0x01 /*HID get_report*/, (3 /*HID feature*/ << 8) | report_number, priv->interface,
-        (unsigned char *)data, length, 1000 /*timeout millis*/);
-
-    if (res < 0)
-        return -1;
-
-    if (skipped_report_id)
-        res++;
-
-    return res;
-}
-
-/* Helper function, to simplify hid_read().
-   This should be called with dev->mutex locked. */
-static int return_data(StreamDeckPrivate *priv, unsigned char *data, size_t length) {
-    /* Copy the data out of the linked list item (rpt) into the
-       return buffer (data), and delete the liked list item. */
-    // struct input_report *rpt = priv->input_reports;
-    // size_t len = (length < rpt->len) ? length : rpt->len;
-    // if (len > 0)
-    //     memcpy(data, rpt->data, len);
-    // dev->input_reports = rpt->next;
-    // free(rpt->data);
-    // free(rpt);
-    // return len;
-    return 0;
-}
-
-int usb_read_timeout(StreamDeckPrivate *priv, unsigned char *data, size_t length,
-                     int milliseconds) {
-    int bytes_read = -1;
-
-    // #if 0
-    int transferred;
-    int res = libusb_interrupt_transfer(priv->handle, priv->input_endpoint, data, length,
-                                        &transferred, 5000);
-    printf("transferred: %d\n", transferred);
-    return transferred;
-    // #endif
-
-    //     pthread_mutex_lock(&dev->mutex);
-    //     pthread_cleanup_push(&cleanup_mutex, dev);
-
-    //     /* There's an input report queued up. Return it. */
-    //     if (dev->input_reports) {
-    //         /* Return the first one */
-    //         bytes_read = return_data(dev, data, length);
-    //         goto ret;
-    //     }
-
-    //     if (dev->shutdown_thread) {
-    //         /* This means the device has been disconnected.
-    //            An error code of -1 should be returned. */
-    //         bytes_read = -1;
-    //         goto ret;
-    //     }
-
-    //     if (milliseconds == -1) {
-    //         /* Blocking */
-    //         while (!dev->input_reports && !dev->shutdown_thread) {
-    //             pthread_cond_wait(&dev->condition, &dev->mutex);
-    //         }
-    //         if (dev->input_reports) {
-    //             bytes_read = return_data(dev, data, length);
-    //         }
-    //     } else if (milliseconds > 0) {
-    //         /* Non-blocking, but called with timeout. */
-    //         int res;
-    //         struct timespec ts;
-    //         clock_gettime(CLOCK_REALTIME, &ts);
-    //         ts.tv_sec += milliseconds / 1000;
-    //         ts.tv_nsec += (milliseconds % 1000) * 1000000;
-    //         if (ts.tv_nsec >= 1000000000L) {
-    //             ts.tv_sec++;
-    //             ts.tv_nsec -= 1000000000L;
-    //         }
-
-    //         while (!dev->input_reports && !dev->shutdown_thread) {
-    //             res = pthread_cond_timedwait(&dev->condition, &dev->mutex, &ts);
-    //             if (res == 0) {
-    //                 if (dev->input_reports) {
-    //                     bytes_read = return_data(dev, data, length);
-    //                     break;
-    //                 }
-
-    //                 /* If we're here, there was a spurious wake up
-    //                    or the read thread was shutdown. Run the
-    //                    loop again (ie: don't break). */
-    //             } else if (res == ETIMEDOUT) {
-    //                 /* Timed out. */
-    //                 bytes_read = 0;
-    //                 break;
-    //             } else {
-    //                 /* Error. */
-    //                 bytes_read = -1;
-    //                 break;
-    //             }
-    //         }
-    //     } else {
-    //         /* Purely non-blocking */
-    //         bytes_read = 0;
-    //     }
-
-    // ret:
-    //     pthread_mutex_unlock(&dev->mutex);
-    //     pthread_cleanup_pop(0);
-
-    //     return bytes_read;
-}
-
-int usb_read(StreamDeckPrivate *priv, unsigned char *data, size_t length) {
-    return usb_read_timeout(priv, data, length, -1 /*priv->blocking ? -1 : 0*/);
-}
-
-int usb_write(StreamDeckPrivate *priv, const unsigned char *data, size_t length) {
-    int res = -1;
-    int report_number = data[0];
-    int skipped_report_id = 0;
-
-    if (report_number == 0x0) {
-        data++;
-        length--;
-        skipped_report_id = 1;
-    }
-
-    if (priv->output_endpoint <= 0) {
-        /* No interrupt out endpoint. Use the Control Endpoint */
-        res = libusb_control_transfer(
-            priv->handle,
-            LIBUSB_REQUEST_TYPE_CLASS | LIBUSB_RECIPIENT_INTERFACE | LIBUSB_ENDPOINT_OUT,
-            0x09 /*HID Set_Report*/, (2 /*HID output*/ << 8) | report_number, 0,
-            (unsigned char *)data, length, 1000 /*timeout millis*/);
-        printf("%d\n", res);
-
-        if (res < 0)
-            return -1;
-
-        if (skipped_report_id)
-            length++;
-
-        return length;
-    } else {
-        /* Use the interrupt out endpoint */
-        printf("Write to endpoint %d\n", priv->output_endpoint);
-        int actual_length;
-        res = libusb_interrupt_transfer(priv->handle, priv->output_endpoint, (unsigned char *)data,
-                                        length, &actual_length, 1000);
-
-        printf("result = %d, l=%d\n", res, actual_length);
-        if (res < 0)
-            return -1;
-
-        if (skipped_report_id)
-            actual_length++;
-
-        return actual_length;
-    }
+    // Read Indexed String 1
+    res = hid_get_indexed_string(priv->handle, 1, wstr, 255);
+    wprintf(L"Indexed String 1: %s\n", wstr);
 }
 
 void stream_deck_reset_to_logo(StreamDeck *sd) {
@@ -516,7 +218,7 @@ void stream_deck_reset_to_logo(StreamDeck *sd) {
 
     StreamDeckPrivate *priv = stream_deck_get_instance_private(sd);
 
-    send_feature_report(priv, resetCommandBuffer, 32);
+    hid_send_feature_report(priv->handle, resetCommandBuffer, 32);
 }
 
 void stream_deck_set_brightness(StreamDeck *sd, int percentage) {
@@ -527,7 +229,7 @@ void stream_deck_set_brightness(StreamDeck *sd, int percentage) {
 
     StreamDeckPrivate *priv = stream_deck_get_instance_private(sd);
 
-    send_feature_report(priv, resetCommandBuffer, 32);
+    hid_send_feature_report(priv->handle, resetCommandBuffer, 32);
 }
 
 GString *stream_deck_get_firmware_version(StreamDeck *sd) {
@@ -540,7 +242,7 @@ GString *stream_deck_get_firmware_version(StreamDeck *sd) {
     // GEN2 - 5
     buf[0] = 5;
 
-    get_feature_report(priv, buf, 32);
+    hid_get_feature_report(priv->handle, buf, sizeof(buf));
     g_string_assign(value, &buf[6]);
 
     return value;
@@ -556,7 +258,7 @@ GString *stream_deck_get_serial_number(StreamDeck *sd) {
     // GEN2 - 6
     buf[0] = 6;
 
-    get_feature_report(priv, buf, 32);
+    hid_get_feature_report(priv->handle, buf, sizeof(buf));
     g_string_assign(value, &buf[2]);
 
     return value;
@@ -649,7 +351,7 @@ void write_image(StreamDeckPrivate *priv, int key, GBytes *image_bytes) {
 
         memcpy(packet + priv->packet_header_size, data + bytes_sent, this_length);
 
-        usb_write(priv, packet, priv->max_packet_size);
+        hid_write(priv->handle, packet, priv->max_packet_size);
 
         bytes_remaining = bytes_remaining - this_length;
         page_number = page_number + 1;
@@ -730,10 +432,15 @@ void stream_deck_read_key_states(StreamDeck *sd) {
     StreamDeckPrivate *priv = stream_deck_get_instance_private(sd);
     unsigned char key_state[4 + 15];
 
-    int n = usb_read_timeout(priv, key_state, 4 + 15, 0);
+    memset(key_state, 0, sizeof(key_state));
+    int n = hid_read(priv->handle, key_state, sizeof(key_state));
 
-    printf("%d\n", n);
+    printf("Status:\n");
+    for (int i = 0; i < 4; i++) {
+        printf("  %d=%d\n", i, key_state[i]);
+    }
+    printf("Keys:\n");
     for (int i = 0; i < 15; i++) {
-        printf("%d = %d\n", i, key_state[4 + i]);
+        printf("  %d = %d\n", i, key_state[4 + i]);
     }
 }
