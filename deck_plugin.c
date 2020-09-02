@@ -16,6 +16,8 @@ static GParamSpec *obj_properties[N_PROPERTIES] = {
     NULL,
 };
 
+void process_plugin_exec(gpointer data, gpointer user_data);
+
 static void deck_plugin_set_property(GObject *object, guint property_id, const GValue *value,
                                      GParamSpec *pspec) {
     DeckPlugin *self = DECK_PLUGIN(object);
@@ -57,6 +59,8 @@ static void deck_plugin_class_init(DeckPluginClass *klass) {
     object_class->get_property = deck_plugin_get_property;
     // object_class->constructed = stream_deck_constructed;
     object_class->finalize = deck_plugin_finalize;
+
+    klass->pool = g_thread_pool_new(process_plugin_exec, NULL, 5, TRUE, NULL);
 
     obj_properties[NAME] =
         g_param_spec_string("name", "Name", "Name of the plugin, used to populate the plugin list.",
@@ -104,6 +108,38 @@ GtkWidget *deck_plugin_get_preview_widget(DeckPlugin *self) {
     g_signal_connect(self, "notify::preview", G_CALLBACK(on_preview_updated), preview);
 
     return preview;
+}
+
+void process_plugin_exec(gpointer data, gpointer user_data) {
+    DeckPlugin *self = DECK_PLUGIN(data);
+    DeckPluginClass *klass;
+    g_return_if_fail(DECK_IS_PLUGIN(self));
+
+    klass = DECK_PLUGIN_GET_CLASS(self);
+
+    /* if the method is purely virtual, then it is a good idea to
+     * check that it has been overridden before calling it, and,
+     * depending on the intent of the class, either ignore it silently
+     * or warn the user.
+     */
+    g_return_if_fail(klass->config_widget != NULL);
+    klass->exec(data);
+}
+
+void deck_plugin_exec(DeckPlugin *self) {
+    DeckPluginClass *klass;
+    g_return_if_fail(DECK_IS_PLUGIN(self));
+
+    klass = DECK_PLUGIN_GET_CLASS(self);
+
+    /* if the method is purely virtual, then it is a good idea to
+     * check that it has been overridden before calling it, and,
+     * depending on the intent of the class, either ignore it silently
+     * or warn the user.
+     */
+    g_return_if_fail(klass->config_widget != NULL);
+
+    g_thread_pool_push(klass->pool, self, NULL);
 }
 
 void deck_plugin_get_config_widget(DeckPlugin *self, GtkBox *parent) {

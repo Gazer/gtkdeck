@@ -81,10 +81,21 @@ void on_deck_preview_update(GObject *gobject, GParamSpec *pspec, gpointer user_d
     stream_deck_set_image_from_surface(deck, 0, surface);
 }
 
+void on_deck_key_changed(GObject *gobject, int key, gpointer user_data) {
+    StreamDeck *deck = STREAM_DECK(gobject);
+    DeckPlugin *plugin = BUTTON_ACTION[key];
+
+    if (plugin != NULL) {
+        deck_plugin_exec(plugin);
+    }
+}
+
 void on_drag_data_received(GtkWidget *wgt, GdkDragContext *context, int x, int y,
                            GtkSelectionData *sdata, guint info, guint time, gpointer userdata) {
     GtkGrid *grid = GTK_GRID(userdata);
     StreamDeck *deck = STREAM_DECK(g_object_get_data(G_OBJECT(grid), "deck"));
+
+    g_signal_connect(deck, "key_pressed", G_CALLBACK(on_deck_key_changed), NULL);
 
     for (int top = 0; top < 3; top++) {
         for (int left = 0; left < 5; left++) {
@@ -219,7 +230,7 @@ int main(int argc, char **argv) {
 
     status = g_application_run(G_APPLICATION(app), argc, argv);
 
-    stream_deck_exit();
+    stream_deck_free(devices);
 
     g_object_unref(app);
 

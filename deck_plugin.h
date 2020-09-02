@@ -22,7 +22,9 @@ struct _DeckPluginClass {
     /* class members */
     DeckPlugin *(*clone)(DeckPlugin *self);
     void (*config_widget)(DeckPlugin *self, GtkBox *parent);
-    // void (*do_action_public_pure_virtual)(MamanBar *self, guint8 i);
+    void (*exec)(DeckPlugin *self);
+
+    GThreadPool *pool;
 
     /* Padding to allow adding up to 12 new virtual functions without
      * breaking ABI. */
@@ -37,11 +39,12 @@ struct _DeckPluginClass {
  * Method definitions.
  */
 GType deck_plugin_get_type();
-DeckPlugin *deck_plugin_clone(DeckPlugin *plugin);
-const gchar *deck_plugin_get_name(DeckPlugin *plugin);
-GtkWidget *deck_plugin_get_preview_widget(DeckPlugin *plugin);
-void deck_plugin_get_config_widget(DeckPlugin *plugin, GtkBox *parent);
-cairo_surface_t *deck_plugin_get_surface(DeckPlugin *plugin);
+DeckPlugin *deck_plugin_clone(DeckPlugin *self);
+const gchar *deck_plugin_get_name(DeckPlugin *self);
+GtkWidget *deck_plugin_get_preview_widget(DeckPlugin *self);
+void deck_plugin_get_config_widget(DeckPlugin *self, GtkBox *parent);
+void deck_plugin_exec(DeckPlugin *self);
+cairo_surface_t *deck_plugin_get_surface(DeckPlugin *self);
 
 G_END_DECLS
 

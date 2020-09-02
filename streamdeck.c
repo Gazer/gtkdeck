@@ -8,6 +8,7 @@
 
 typedef struct _StreamDeckPrivate {
     hid_device *handle;
+    GThread *read_thread;
 
     // properties
     int rows;
@@ -15,6 +16,7 @@ typedef struct _StreamDeckPrivate {
     int icon_size;
     int key_direction;
     int key_data_offset;
+    char *key_state;
 
     // calculated
     int num_keys;
@@ -32,12 +34,15 @@ typedef enum {
     ICON_SIZE,
     KEY_DIRECTION,
     KEY_DATA_OFFSET,
+    KEY_STATES,
     N_PROPERTIES
 } StreamDeckProperty;
 
 static GParamSpec *obj_properties[N_PROPERTIES] = {
     NULL,
 };
+
+static int signals[1];
 
 static void stream_deck_set_property(GObject *object, guint property_id, const GValue *value,
                                      GParamSpec *pspec) {
@@ -48,6 +53,12 @@ static void stream_deck_set_property(GObject *object, guint property_id, const G
     case DEVICE:
         priv->handle = g_value_peek_pointer(value);
         break;
+    case KEY_STATES: {
+        char *new_key_state = g_value_peek_pointer(value);
+        memcpy(priv->key_state, new_key_state, sizeof(priv->key_state));
+        // g_signal_emit_by_name(object, "key_state::0", NULL);
+        break;
+    }
     case ROWS:
         priv->rows = g_value_get_int(value);
         break;
@@ -100,6 +111,45 @@ static void stream_deck_init(StreamDeck *self) {
     priv->key_data_offset = 0;
 }
 
+gpointer read_key_states(gpointer data) {
+    StreamDeck *deck = STREAM_DECK(data);
+    StreamDeckPrivate *priv = stream_deck_get_instance_private(deck);
+    unsigned char key_state[4 + 15];
+
+    while (TRUE) {
+        memset(key_state, 0, sizeof(key_state));
+        int n = hid_read_timeout(priv->handle, key_state, sizeof(key_state), 50);
+
+        for (int i = 0; i < 15; i++) {
+            if (priv->key_state[i] != key_state[4 + i]) {
+                if (key_state[4 + i] == 1) {
+                    printf("%d pressed\n", i);
+                    g_signal_emit(G_OBJECT(deck), signals[0], 0, i);
+                } else {
+                    printf("%d released\n", i);
+                }
+            }
+        }
+
+        memcpy(priv->key_state, key_state + 4, sizeof(priv->key_state));
+
+        // g_object_set(G_OBJECT(deck), "key_states", key_state + 4, NULL);
+
+        // printf("Status:\n");
+        // for (int i = 0; i < 4; i++) {
+        //     printf("  %d=%d\n", i, key_state[i]);
+        // }
+        // printf("Keys: ");
+        // for (int i = 0; i < 15; i++) {
+        //     printf("%d |", key_state[4 + i]);
+        // }
+        // printf("\n");
+
+        usleep(5000);
+        g_thread_yield();
+    }
+}
+
 // https://github.com/libusb/hidapi/blob/ca1a2d6efae8d372587f4c13f60632916681d408/libusb/hid.c
 static void stream_deck_constructed(GObject *object) {
     StreamDeckPrivate *priv = stream_deck_get_instance_private(STREAM_DECK(object));
@@ -109,6 +159,9 @@ static void stream_deck_constructed(GObject *object) {
     priv->icon_bytes = priv->icon_size * priv->icon_size * 3;
     priv->max_packet_size = 1024;
     priv->packet_header_size = 8;
+    priv->key_state = g_new0(char, priv->num_keys);
+
+    priv->read_thread = g_thread_new("deck", read_key_states, object);
 
     G_OBJECT_CLASS(stream_deck_parent_class)->constructed(object);
 }
@@ -119,6 +172,8 @@ static void stream_deck_finalize(GObject *obj) {
 
     printf("stream_deck_finalize\n");
 
+    g_free(priv->key_state);
+    g_thread_unref(priv->read_thread);
     hid_close(priv->handle);
 
     /* Always chain up to the parent finalize function to complete object
@@ -128,15 +183,25 @@ static void stream_deck_finalize(GObject *obj) {
 
 static void stream_deck_class_init(StreamDeckClass *klass) {
     GObjectClass *object_class = G_OBJECT_CLASS(klass);
+    GType types[1] = {G_TYPE_INT};
 
     object_class->set_property = stream_deck_set_property;
     object_class->get_property = stream_deck_get_property;
     object_class->constructed = stream_deck_constructed;
     object_class->finalize = stream_deck_finalize;
 
+    signals[0] =
+        g_signal_newv("key_pressed", G_TYPE_FROM_CLASS(object_class),
+                      G_SIGNAL_RUN_LAST | G_SIGNAL_NO_RECURSE | G_SIGNAL_NO_HOOKS,
+                      NULL /* closure */, NULL /* accumulator */, NULL /* accumulator data */,
+                      g_cclosure_marshal_VOID__INT, G_TYPE_NONE, 1, types);
+
     obj_properties[DEVICE] =
         g_param_spec_pointer("device", "Device", "USB Device where the deck is connected.",
                              G_PARAM_CONSTRUCT_ONLY | G_PARAM_READWRITE);
+
+    obj_properties[KEY_STATES] = g_param_spec_pointer(
+        "key_states", "Key State", "Array of state of each key", G_PARAM_READWRITE);
 
     obj_properties[ROWS] = g_param_spec_int("rows", "Rows", "Rows.", 1, 10, 1,
                                             G_PARAM_CONSTRUCT_ONLY | G_PARAM_READWRITE);
@@ -185,6 +250,12 @@ GList *stream_deck_list() {
     // hid_set_nonblocking(handle, 1);
     deck = stream_deck_new(handle, 3, 5, 72, LTR, 4);
     device_list = g_list_append(device_list, deck);
+}
+
+void stream_deck_free(GList *devices) {
+    GList *iter = devices;
+    g_object_unref(iter->data);
+    g_list_free(devices);
 }
 
 void stream_deck_info(StreamDeck *sd) {
@@ -430,17 +501,4 @@ void stream_deck_set_image_from_surface(StreamDeck *sd, int key, cairo_surface_t
 
 void stream_deck_read_key_states(StreamDeck *sd) {
     StreamDeckPrivate *priv = stream_deck_get_instance_private(sd);
-    unsigned char key_state[4 + 15];
-
-    memset(key_state, 0, sizeof(key_state));
-    int n = hid_read(priv->handle, key_state, sizeof(key_state));
-
-    printf("Status:\n");
-    for (int i = 0; i < 4; i++) {
-        printf("  %d=%d\n", i, key_state[i]);
-    }
-    printf("Keys:\n");
-    for (int i = 0; i < 15; i++) {
-        printf("  %d = %d\n", i, key_state[4 + i]);
-    }
 }

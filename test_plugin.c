@@ -3,6 +3,7 @@
 void test_config_widget(DeckPlugin *plugin, GtkBox *parent);
 DeckPlugin *test_clone(DeckPlugin *plugin);
 void set_surface(TestPlugin *self);
+void test_exec(DeckPlugin *plugin);
 
 typedef struct _TestPluginPrivate {
     GdkRGBA color;
@@ -32,6 +33,7 @@ static void test_plugin_class_init(TestPluginClass *klass) {
     /* implement pure virtual function. */
     deck_plugin_klass->clone = test_clone;
     deck_plugin_klass->config_widget = test_config_widget;
+    deck_plugin_klass->exec = test_exec;
 
     GObjectClass *object_class = G_OBJECT_CLASS(klass);
 
@@ -57,6 +59,32 @@ void set_surface(TestPlugin *self) {
     TestPluginPrivate *priv = test_plugin_get_instance_private(TEST_PLUGIN(self));
     cairo_surface_t *preview_surface;
     cairo_t *cr;
+
+    preview_surface = cairo_image_surface_create(CAIRO_FORMAT_RGB24, 72, 72);
+    cr = cairo_create(preview_surface);
+    cairo_set_source_rgb(cr, priv->color.red, priv->color.green, priv->color.blue);
+    cairo_rectangle(cr, 0, 2, 72, 72);
+    cairo_fill(cr);
+    cairo_destroy(cr);
+
+    g_object_set(G_OBJECT(self), "preview", preview_surface, NULL);
+}
+
+void test_exec(DeckPlugin *self) {
+    TestPluginPrivate *priv = test_plugin_get_instance_private(TEST_PLUGIN(self));
+    cairo_surface_t *preview_surface;
+    cairo_t *cr;
+
+    preview_surface = cairo_image_surface_create(CAIRO_FORMAT_RGB24, 72, 72);
+    cr = cairo_create(preview_surface);
+    cairo_set_source_rgb(cr, priv->color.red / 2, priv->color.green / 2, priv->color.blue / 2);
+    cairo_rectangle(cr, 0, 2, 72, 72);
+    cairo_fill(cr);
+    cairo_destroy(cr);
+
+    g_object_set(G_OBJECT(self), "preview", preview_surface, NULL);
+
+    g_usleep(500000);
 
     preview_surface = cairo_image_surface_create(CAIRO_FORMAT_RGB24, 72, 72);
     cr = cairo_create(preview_surface);

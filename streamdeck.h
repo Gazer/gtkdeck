@@ -45,7 +45,7 @@ struct _StreamDeck {
  */
 GType stream_deck_get_type();
 GList *stream_deck_list();
-void stream_deck_exit();
+void stream_deck_free(GList *devices);
 void stream_deck_info(StreamDeck *sd);
 void stream_deck_reset_to_logo(StreamDeck *sd);
 void stream_deck_set_brightness(StreamDeck *sd, int percentage);
