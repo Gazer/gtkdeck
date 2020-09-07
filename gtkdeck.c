@@ -44,14 +44,40 @@ GtkWidget *grid_button(int k) {
     }
 }
 
+void pick_button_image(GtkButton *button, gpointer data) {
+    DeckPlugin *plugin = DECK_PLUGIN(data);
+
+    GtkFileFilter *filter = gtk_file_filter_new();
+    GtkWidget *dialog;
+    GtkFileChooserAction action = GTK_FILE_CHOOSER_ACTION_OPEN;
+    gint res;
+
+    gtk_file_filter_add_mime_type(filter, "image/*");
+
+    dialog = gtk_file_chooser_dialog_new("Open File", NULL, action, "_Cancel", GTK_RESPONSE_CANCEL,
+                                         "_Open", GTK_RESPONSE_ACCEPT, NULL);
+
+    gtk_file_chooser_add_filter(GTK_FILE_CHOOSER(dialog), filter);
+
+    res = gtk_dialog_run(GTK_DIALOG(dialog));
+    if (res == GTK_RESPONSE_ACCEPT) {
+        char *filename;
+        GtkFileChooser *chooser = GTK_FILE_CHOOSER(dialog);
+        filename = gtk_file_chooser_get_filename(chooser);
+
+        deck_plugin_set_preview_from_file(plugin, filename);
+
+        g_free(filename);
+    }
+
+    gtk_widget_destroy(dialog);
+}
+
 void show_config(GtkButton *button, gpointer data) {
     StreamDeck *deck = STREAM_DECK(data);
     GList *children, *iter;
     GtkWidget *config_area;
     DeckPlugin *plugin = DECK_PLUGIN(g_object_get_data(G_OBJECT(button), "plugin"));
-
-    printf("read button states\n");
-    stream_deck_read_key_states(deck);
 
     printf("Need to show button config\n");
 
@@ -62,7 +88,12 @@ void show_config(GtkButton *button, gpointer data) {
         gtk_container_remove(GTK_CONTAINER(config_row), preview_widget);
         children = children->next;
     }
-    gtk_box_pack_start(GTK_BOX(config_row), deck_plugin_get_preview_widget(plugin), FALSE, TRUE, 5);
+    GtkWidget *plugin_preview = deck_plugin_get_preview_widget(plugin);
+    GtkWidget *pick_image_button = gtk_button_new();
+    gtk_container_add(GTK_CONTAINER(pick_image_button), plugin_preview);
+    g_signal_connect(G_OBJECT(pick_image_button), "clicked", G_CALLBACK(pick_button_image), plugin);
+
+    gtk_box_pack_start(GTK_BOX(config_row), pick_image_button, FALSE, TRUE, 5);
 
     config_area = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
     gtk_box_pack_start(GTK_BOX(config_row), GTK_WIDGET(config_area), TRUE, TRUE, 5);

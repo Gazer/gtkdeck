@@ -45,6 +45,8 @@ GtkWidget *deck_plugin_get_preview_widget(DeckPlugin *self);
 void deck_plugin_get_config_widget(DeckPlugin *self, GtkBox *parent);
 void deck_plugin_exec(DeckPlugin *self);
 cairo_surface_t *deck_plugin_get_surface(DeckPlugin *self);
+void deck_plugin_set_preview_from_file(DeckPlugin *self, char *filename);
+void deck_plugin_reset(DeckPlugin *self);
 
 G_END_DECLS
 

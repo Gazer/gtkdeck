@@ -54,7 +54,6 @@ GString *stream_deck_get_serial_number(StreamDeck *sd);
 void stream_deck_fill_color(StreamDeck *sd, int key, int r, int g, int b);
 void stream_deck_set_image_from_file(StreamDeck *sd, int key, gchar *file);
 void stream_deck_set_image_from_surface(StreamDeck *sd, int key, cairo_surface_t *surface);
-void stream_deck_read_key_states(StreamDeck *sd);
 
 G_END_DECLS
 

@@ -498,7 +498,3 @@ void stream_deck_set_image_from_surface(StreamDeck *sd, int key, cairo_surface_t
 
     generic_set_image(sd, key, original);
 }
-
-void stream_deck_read_key_states(StreamDeck *sd) {
-    StreamDeckPrivate *priv = stream_deck_get_instance_private(sd);
-}

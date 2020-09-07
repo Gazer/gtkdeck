@@ -6,6 +6,7 @@
 typedef struct _DeckPluginPrivate {
     gchar *name;
     cairo_surface_t *surface;
+    cairo_surface_t *preview_image;
 } DeckPluginPrivate;
 
 G_DEFINE_TYPE_WITH_PRIVATE(DeckPlugin, deck_plugin, G_TYPE_OBJECT)
@@ -48,6 +49,9 @@ static void deck_plugin_finalize(GObject *object) {
 
     g_free(priv->name);
     cairo_surface_destroy(priv->surface);
+    if (priv->preview_image != NULL) {
+        cairo_surface_destroy(priv->preview_image);
+    }
 
     G_OBJECT_CLASS(deck_plugin_parent_class)->finalize(object);
 }
@@ -124,6 +128,8 @@ void process_plugin_exec(gpointer data, gpointer user_data) {
      */
     g_return_if_fail(klass->config_widget != NULL);
     klass->exec(data);
+
+    deck_plugin_reset(self);
 }
 
 void deck_plugin_exec(DeckPlugin *self) {
@@ -161,4 +167,22 @@ void deck_plugin_get_config_widget(DeckPlugin *self, GtkBox *parent) {
 cairo_surface_t *deck_plugin_get_surface(DeckPlugin *self) {
     DeckPluginPrivate *priv = deck_plugin_get_instance_private(self);
     return priv->surface;
+}
+
+void deck_plugin_set_preview_from_file(DeckPlugin *self, char *filename) {
+    DeckPluginPrivate *priv = deck_plugin_get_instance_private(self);
+    GdkPixbuf *pixbuf = gdk_pixbuf_new_from_file_at_scale(filename, 72, 72, TRUE, NULL);
+
+    if (priv->preview_image != NULL) {
+        cairo_surface_destroy(priv->preview_image);
+    }
+    priv->preview_image = gdk_cairo_surface_create_from_pixbuf(pixbuf, 0, NULL);
+
+    g_object_set(G_OBJECT(self), "preview", priv->preview_image, NULL);
+}
+
+void deck_plugin_reset(DeckPlugin *self) {
+    DeckPluginPrivate *priv = deck_plugin_get_instance_private(self);
+
+    g_object_set(G_OBJECT(self), "preview", priv->preview_image, NULL);
 }

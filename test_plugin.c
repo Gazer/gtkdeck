@@ -51,8 +51,6 @@ void on_color_selected(GtkColorButton *widget, gpointer user_data) {
     TestPluginPrivate *priv = test_plugin_get_instance_private(TEST_PLUGIN(self));
 
     gtk_color_chooser_get_rgba(GTK_COLOR_CHOOSER(widget), &(priv->color));
-
-    set_surface(self);
 }
 
 void set_surface(TestPlugin *self) {
@@ -77,7 +75,7 @@ void test_exec(DeckPlugin *self) {
 
     preview_surface = cairo_image_surface_create(CAIRO_FORMAT_RGB24, 72, 72);
     cr = cairo_create(preview_surface);
-    cairo_set_source_rgb(cr, priv->color.red / 2, priv->color.green / 2, priv->color.blue / 2);
+    cairo_set_source_rgb(cr, priv->color.red, priv->color.green, priv->color.blue);
     cairo_rectangle(cr, 0, 2, 72, 72);
     cairo_fill(cr);
     cairo_destroy(cr);
@@ -85,15 +83,6 @@ void test_exec(DeckPlugin *self) {
     g_object_set(G_OBJECT(self), "preview", preview_surface, NULL);
 
     g_usleep(500000);
-
-    preview_surface = cairo_image_surface_create(CAIRO_FORMAT_RGB24, 72, 72);
-    cr = cairo_create(preview_surface);
-    cairo_set_source_rgb(cr, priv->color.red, priv->color.green, priv->color.blue);
-    cairo_rectangle(cr, 0, 2, 72, 72);
-    cairo_fill(cr);
-    cairo_destroy(cr);
-
-    g_object_set(G_OBJECT(self), "preview", preview_surface, NULL);
 }
 
 void test_config_widget(DeckPlugin *self, GtkBox *parent) {
