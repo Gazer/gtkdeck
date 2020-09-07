@@ -2,6 +2,7 @@
 <!-- Generated with glade 3.22.2 -->
 <interface>
   <requires lib="gtk+" version="3.20"/>
+  <object class="GtkListStore" id="liststore1"/>
   <object class="GtkApplicationWindow" id="main">
     <property name="can_focus">False</property>
     <property name="resizable">False</property>
@@ -153,9 +154,14 @@
               </packing>
             </child>
             <child>
-              <object class="GtkListBox" id="plugin_list">
+              <object class="GtkTreeView" id="plugin_list">
                 <property name="visible">True</property>
-                <property name="can_focus">False</property>
+                <property name="can_focus">True</property>
+                <property name="hexpand">True</property>
+                <property name="vexpand">True</property>
+                <child internal-child="selection">
+                  <object class="GtkTreeSelection"/>
+                </child>
               </object>
               <packing>
                 <property name="expand">True</property>

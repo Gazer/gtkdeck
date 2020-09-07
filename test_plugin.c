@@ -11,6 +11,17 @@ typedef struct _TestPluginPrivate {
 
 G_DEFINE_TYPE_WITH_PRIVATE(TestPlugin, test_plugin, DECK_TYPE_PLUGIN)
 
+typedef enum { COLORED_BUTTON = 0, RED_BUTTON, N_ACTIONS } TestActionCodes;
+
+DeckPluginInfo TEST_PLUGIN_INFO = {
+    "Test Plugin",
+    N_ACTIONS,
+    {
+        {"Colored Button", COLORED_BUTTON},
+        {"Always Red", RED_BUTTON},
+    },
+};
+
 static void test_plugin_init(TestPlugin *self) {
     TestPluginPrivate *priv = test_plugin_get_instance_private(self);
 
@@ -27,10 +38,13 @@ static void test_plugin_finalize(GObject *object) {
     G_OBJECT_CLASS(test_plugin_parent_class)->finalize(object);
 }
 
+DeckPluginInfo *test_info(DeckPlugin *self) { return &TEST_PLUGIN_INFO; }
+
 static void test_plugin_class_init(TestPluginClass *klass) {
     DeckPluginClass *deck_plugin_klass = DECK_PLUGIN_CLASS(klass);
 
     /* implement pure virtual function. */
+    deck_plugin_klass->info = test_info;
     deck_plugin_klass->clone = test_clone;
     deck_plugin_klass->config_widget = test_config_widget;
     deck_plugin_klass->exec = test_exec;
@@ -40,9 +54,7 @@ static void test_plugin_class_init(TestPluginClass *klass) {
     object_class->finalize = test_plugin_finalize;
 }
 
-DeckPlugin *test_plugin_new() {
-    return g_object_new(TEST_TYPE_PLUGIN, "name", "Color Button", NULL);
-}
+DeckPlugin *test_plugin_new() { return g_object_new(TEST_TYPE_PLUGIN, NULL); }
 
 DeckPlugin *test_clone(DeckPlugin *self) { return test_plugin_new(); }
 

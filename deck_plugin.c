@@ -4,14 +4,14 @@
 #include <libusb-1.0/libusb.h>
 
 typedef struct _DeckPluginPrivate {
-    gchar *name;
+    DeckPluginAction *action;
     cairo_surface_t *surface;
     cairo_surface_t *preview_image;
 } DeckPluginPrivate;
 
 G_DEFINE_TYPE_WITH_PRIVATE(DeckPlugin, deck_plugin, G_TYPE_OBJECT)
 
-typedef enum { NAME = 1, PREVIEW, N_PROPERTIES } DeckPluginProperty;
+typedef enum { PREVIEW = 1, N_PROPERTIES } DeckPluginProperty;
 
 static GParamSpec *obj_properties[N_PROPERTIES] = {
     NULL,
@@ -25,9 +25,6 @@ static void deck_plugin_set_property(GObject *object, guint property_id, const G
     DeckPluginPrivate *priv = deck_plugin_get_instance_private(self);
 
     switch ((DeckPluginProperty)property_id) {
-    case NAME:
-        priv->name = g_value_dup_string(value);
-        break;
     case PREVIEW: {
         priv->surface = g_value_get_pointer(value);
         break;
@@ -47,7 +44,6 @@ static void deck_plugin_finalize(GObject *object) {
     DeckPlugin *self = DECK_PLUGIN(object);
     DeckPluginPrivate *priv = deck_plugin_get_instance_private(self);
 
-    g_free(priv->name);
     cairo_surface_destroy(priv->surface);
     if (priv->preview_image != NULL) {
         cairo_surface_destroy(priv->preview_image);
@@ -67,19 +63,25 @@ static void deck_plugin_class_init(DeckPluginClass *klass) {
 
     klass->pool = g_thread_pool_new(process_plugin_exec, NULL, 5, TRUE, NULL);
 
-    obj_properties[NAME] =
-        g_param_spec_string("name", "Name", "Name of the plugin, used to populate the plugin list.",
-                            NULL, G_PARAM_CONSTRUCT_ONLY | G_PARAM_READWRITE);
     obj_properties[PREVIEW] =
         g_param_spec_pointer("preview", "Preview", "Preview image to show.", G_PARAM_READWRITE);
 
     g_object_class_install_properties(object_class, N_PROPERTIES, obj_properties);
 }
 
-const gchar *deck_plugin_get_name(DeckPlugin *plugin) {
-    DeckPluginPrivate *priv = deck_plugin_get_instance_private(plugin);
+DeckPluginInfo *deck_plugin_get_info(DeckPlugin *self) {
+    DeckPluginClass *klass;
+    g_return_val_if_fail(DECK_IS_PLUGIN(self), NULL);
 
-    return priv->name;
+    klass = DECK_PLUGIN_GET_CLASS(self);
+
+    /* if the method is purely virtual, then it is a good idea to
+     * check that it has been overridden before calling it, and,
+     * depending on the intent of the class, either ignore it silently
+     * or warn the user.
+     */
+    g_return_val_if_fail(klass->clone != NULL, NULL);
+    return klass->info(self);
 }
 
 DeckPlugin *deck_plugin_clone(DeckPlugin *self) {

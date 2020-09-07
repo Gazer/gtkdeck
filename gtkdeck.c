@@ -13,27 +13,81 @@ static GtkTargetEntry entries[] = {{"text/plain", GTK_TARGET_SAME_APP, 0}};
 
 void on_drag_data_get(GtkWidget *widget, GdkDragContext *drag_context, GtkSelectionData *sdata,
                       guint info, guint time, gpointer user_data) {
-    printf("Sending plugin name: color_button\n");
+    GtkTreeSelection *selector;
+    GtkTreeIter iter;
+    GtkTreeModel *list_store;
+    gboolean rv;
 
-    gtk_selection_data_set(sdata, GDK_SELECTION_TYPE_ATOM, 32, (const guchar *)&user_data,
+    /* Get the selector widget from the treeview in question */
+    selector = gtk_tree_view_get_selection(GTK_TREE_VIEW(widget));
+
+    /* This shouldn't really happen, but just in case */
+    if (rv == FALSE) {
+        printf(" No row selected\n");
+        return;
+    }
+    /* Get the tree model (list_store) and initialise the iterator */
+    rv = gtk_tree_selection_get_selected(selector, &list_store, &iter);
+
+    GValue value = {0};
+    gpointer pointer;
+    gtk_tree_model_get_value(list_store, &iter, 1, &value);
+    pointer = g_value_get_pointer(&value);
+    if (pointer == NULL) {
+        // TODO: Header should not be dragable
+        // Header, ignore
+        return;
+    }
+    DeckPlugin *plugin = DECK_PLUGIN(pointer);
+
+    DeckPluginInfo *plugin_info = deck_plugin_get_info(plugin);
+    printf("Sending plugin name: %s\n", plugin_info->name);
+
+    gtk_selection_data_set(sdata, GDK_SELECTION_TYPE_ATOM, 32, (const guchar *)&plugin,
                            sizeof(gpointer));
 }
 
-void init_plugin_list(GtkListBox *list) {
+void init_plugin_tree(GtkTreeView *list) {
     GList *iter = plugin_list;
+    GtkTreeStore *treestore;
+    GtkTreeIter item;
+    GtkTreeViewColumn *col;
+    GtkCellRenderer *renderer;
+
+    col = gtk_tree_view_column_new();
+    gtk_tree_view_column_set_title(col, "Name");
+    gtk_tree_view_append_column(list, col);
+
+    renderer = gtk_cell_renderer_text_new();
+    gtk_tree_view_column_pack_start(col, renderer, TRUE);
+    gtk_tree_view_column_set_attributes(col, renderer, "text", 0, NULL);
+
+    treestore = gtk_tree_store_new(2, G_TYPE_STRING, G_TYPE_POINTER);
 
     while (iter != NULL) {
         DeckPlugin *plugin = DECK_PLUGIN(iter->data);
         GtkWidget *color_button;
+        GtkTreeIter child;
+        DeckPluginInfo *info = deck_plugin_get_info(plugin);
 
-        color_button = gtk_button_new_with_label(deck_plugin_get_name(plugin));
+        gtk_tree_store_append(treestore, &item, NULL);
+        gtk_tree_store_set(treestore, &item, 0, g_strdup(info->name), 1, NULL, -1);
 
-        gtk_drag_source_set(color_button, GDK_BUTTON1_MASK, entries, 1, GDK_ACTION_COPY);
-        g_signal_connect(color_button, "drag-data-get", G_CALLBACK(on_drag_data_get), plugin);
-        gtk_list_box_insert(list, color_button, -1);
+        for (int i = 0; i < info->actions_count; i++) {
+            DeckPluginAction action = info->actions[i];
+
+            gtk_tree_store_append(treestore, &child, &item);
+            gtk_tree_store_set(treestore, &child, 0, g_strdup(action.name), 1, plugin, -1);
+        }
+
+        // gtk_tree_drag_source_row_draggable
 
         iter = iter->next;
     }
+
+    gtk_drag_source_set(GTK_WIDGET(list), GDK_BUTTON1_MASK, entries, 1, GDK_ACTION_COPY);
+    g_signal_connect(list, "drag-data-get", G_CALLBACK(on_drag_data_get), NULL);
+    gtk_tree_view_set_model(list, GTK_TREE_MODEL(treestore));
 }
 
 GtkWidget *grid_button(int k) {
@@ -213,7 +267,7 @@ static void init_device_info(GtkBuilder *builder, StreamDeck *deck) {
 static void activate(GtkApplication *app, gpointer user_data) {
     GtkBuilder *builder;
     GtkWidget *window;
-    GtkListBox *list;
+    GtkTreeView *plugin_tree;
     GtkGrid *button_grid;
     GObject *o;
     GList *devices = (GList *)user_data;
@@ -233,8 +287,8 @@ static void activate(GtkApplication *app, gpointer user_data) {
 
     config_row = GTK_BOX(gtk_builder_get_object(builder, "config_row"));
 
-    list = GTK_LIST_BOX(gtk_builder_get_object(builder, "plugin_list"));
-    init_plugin_list(list);
+    plugin_tree = GTK_TREE_VIEW(gtk_builder_get_object(builder, "plugin_list"));
+    init_plugin_tree(plugin_tree);
 
     button_grid = GTK_GRID(gtk_builder_get_object(builder, "button_grid"));
     init_button_grid(button_grid, device);
