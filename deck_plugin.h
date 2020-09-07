@@ -20,6 +20,8 @@ G_DECLARE_DERIVABLE_TYPE(DeckPlugin, deck_plugin, DECK, PLUGIN, GObject)
 typedef struct _DeckPluginAction {
     gchar *name;
     int code;
+    void (*config)(DeckPlugin *self, GtkBox *parent);
+    void (*exec)(DeckPlugin *self);
 } DeckPluginAction;
 
 typedef struct _DeckPluginInfo {
@@ -32,7 +34,7 @@ struct _DeckPluginClass {
     GObjectClass parent;
     /* class members */
     DeckPluginInfo *(*info)(DeckPlugin *self);
-    DeckPlugin *(*clone)(DeckPlugin *self);
+    DeckPlugin *(*clone)(DeckPlugin *self, int action);
     void (*config_widget)(DeckPlugin *self, GtkBox *parent);
     void (*exec)(DeckPlugin *self);
 
@@ -47,9 +49,8 @@ struct _DeckPluginClass {
  * Method definitions.
  */
 GType deck_plugin_get_type();
-DeckPlugin *deck_plugin_clone(DeckPlugin *self);
+DeckPlugin *deck_plugin_new_with_action(DeckPlugin *self, int action);
 DeckPluginInfo *deck_plugin_get_info(DeckPlugin *self);
-GList *deck_plugin_get_actions(DeckPlugin *self);
 void deck_plugin_get_config_widget(DeckPlugin *self, GtkBox *parent);
 void deck_plugin_exec(DeckPlugin *self);
 cairo_surface_t *deck_plugin_get_surface(DeckPlugin *self);

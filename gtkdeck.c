@@ -11,6 +11,11 @@ DeckPlugin *BUTTON_ACTION[15] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
 static GtkTargetEntry entries[] = {{"text/plain", GTK_TARGET_SAME_APP, 0}};
 
+struct DATA {
+    DeckPlugin *plugin;
+    int action;
+};
+
 void on_drag_data_get(GtkWidget *widget, GdkDragContext *drag_context, GtkSelectionData *sdata,
                       guint info, guint time, gpointer user_data) {
     GtkTreeSelection *selector;
@@ -33,18 +38,23 @@ void on_drag_data_get(GtkWidget *widget, GdkDragContext *drag_context, GtkSelect
     gpointer pointer;
     gtk_tree_model_get_value(list_store, &iter, 1, &value);
     pointer = g_value_get_pointer(&value);
+    g_value_unset(&value);
     if (pointer == NULL) {
         // TODO: Header should not be dragable
         // Header, ignore
         return;
     }
-    DeckPlugin *plugin = DECK_PLUGIN(pointer);
 
-    DeckPluginInfo *plugin_info = deck_plugin_get_info(plugin);
-    printf("Sending plugin name: %s\n", plugin_info->name);
+    gtk_tree_model_get_value(list_store, &iter, 2, &value);
+    int action = g_value_get_uint(&value);
+    g_value_unset(&value);
 
-    gtk_selection_data_set(sdata, GDK_SELECTION_TYPE_ATOM, 32, (const guchar *)&plugin,
-                           sizeof(gpointer));
+    struct DATA *tmp = g_malloc0(sizeof(struct DATA));
+    tmp->plugin = DECK_PLUGIN(pointer);
+    tmp->action = action;
+
+    gtk_selection_data_set(sdata, gdk_atom_intern("struct DATA pointer", FALSE), 8, (void *)&tmp,
+                           sizeof(struct DATA));
 }
 
 void init_plugin_tree(GtkTreeView *list) {
@@ -62,7 +72,7 @@ void init_plugin_tree(GtkTreeView *list) {
     gtk_tree_view_column_pack_start(col, renderer, TRUE);
     gtk_tree_view_column_set_attributes(col, renderer, "text", 0, NULL);
 
-    treestore = gtk_tree_store_new(2, G_TYPE_STRING, G_TYPE_POINTER);
+    treestore = gtk_tree_store_new(3, G_TYPE_STRING, G_TYPE_POINTER, G_TYPE_UINT);
 
     while (iter != NULL) {
         DeckPlugin *plugin = DECK_PLUGIN(iter->data);
@@ -71,16 +81,14 @@ void init_plugin_tree(GtkTreeView *list) {
         DeckPluginInfo *info = deck_plugin_get_info(plugin);
 
         gtk_tree_store_append(treestore, &item, NULL);
-        gtk_tree_store_set(treestore, &item, 0, g_strdup(info->name), 1, NULL, -1);
+        gtk_tree_store_set(treestore, &item, 0, g_strdup(info->name), 1, NULL, 2, 0, -1);
 
         for (int i = 0; i < info->actions_count; i++) {
             DeckPluginAction action = info->actions[i];
 
             gtk_tree_store_append(treestore, &child, &item);
-            gtk_tree_store_set(treestore, &child, 0, g_strdup(action.name), 1, plugin, -1);
+            gtk_tree_store_set(treestore, &child, 0, g_strdup(action.name), 1, plugin, 2, i, -1);
         }
-
-        // gtk_tree_drag_source_row_draggable
 
         iter = iter->next;
     }
@@ -192,6 +200,10 @@ void on_drag_data_received(GtkWidget *wgt, GdkDragContext *context, int x, int y
     GtkGrid *grid = GTK_GRID(userdata);
     StreamDeck *deck = STREAM_DECK(g_object_get_data(G_OBJECT(grid), "deck"));
 
+    struct DATA *data = NULL;
+    const guchar *my_data = gtk_selection_data_get_data(sdata);
+    memcpy(&data, my_data, sizeof(data));
+
     for (int top = 0; top < 3; top++) {
         for (int left = 0; left < 5; left++) {
             GtkWidget *cell = gtk_grid_get_child_at(grid, left, top);
@@ -205,8 +217,7 @@ void on_drag_data_received(GtkWidget *wgt, GdkDragContext *context, int x, int y
 
                 GtkWidget *box = gtk_button_new();
 
-                DeckPlugin *plugin = DECK_PLUGIN(*(gpointer *)gtk_selection_data_get_data(sdata));
-                plugin = deck_plugin_clone(plugin);
+                DeckPlugin *plugin = deck_plugin_new_with_action(data->plugin, data->action);
                 g_object_set_data(G_OBJECT(plugin), "key", GINT_TO_POINTER(key));
 
                 gtk_widget_destroy(cell);
@@ -232,6 +243,8 @@ void on_drag_data_received(GtkWidget *wgt, GdkDragContext *context, int x, int y
             }
         }
     }
+
+    g_free(data);
 }
 
 void init_button_grid(GtkGrid *grid, StreamDeck *deck) {

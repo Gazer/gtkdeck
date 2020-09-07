@@ -1,7 +1,7 @@
 #include "test_plugin.h"
 
 void test_config_widget(DeckPlugin *plugin, GtkBox *parent);
-DeckPlugin *test_clone(DeckPlugin *plugin);
+DeckPlugin *test_clone(DeckPlugin *plugin, int action);
 void set_surface(TestPlugin *self);
 void test_exec(DeckPlugin *plugin);
 
@@ -13,12 +13,18 @@ G_DEFINE_TYPE_WITH_PRIVATE(TestPlugin, test_plugin, DECK_TYPE_PLUGIN)
 
 typedef enum { COLORED_BUTTON = 0, RED_BUTTON, N_ACTIONS } TestActionCodes;
 
+void test_0_config(DeckPlugin *self, GtkBox *parent);
+void test_1_config(DeckPlugin *self, GtkBox *parent);
+
+void test_0_exec(DeckPlugin *self);
+void test_1_exec(DeckPlugin *self);
+
 DeckPluginInfo TEST_PLUGIN_INFO = {
     "Test Plugin",
     N_ACTIONS,
     {
-        {"Colored Button", COLORED_BUTTON},
-        {"Always Red", RED_BUTTON},
+        {"Colored Button", COLORED_BUTTON, test_0_config, test_0_exec},
+        {"Always Red", RED_BUTTON, test_1_config, test_1_exec},
     },
 };
 
@@ -46,8 +52,6 @@ static void test_plugin_class_init(TestPluginClass *klass) {
     /* implement pure virtual function. */
     deck_plugin_klass->info = test_info;
     deck_plugin_klass->clone = test_clone;
-    deck_plugin_klass->config_widget = test_config_widget;
-    deck_plugin_klass->exec = test_exec;
 
     GObjectClass *object_class = G_OBJECT_CLASS(klass);
 
@@ -56,7 +60,9 @@ static void test_plugin_class_init(TestPluginClass *klass) {
 
 DeckPlugin *test_plugin_new() { return g_object_new(TEST_TYPE_PLUGIN, NULL); }
 
-DeckPlugin *test_clone(DeckPlugin *self) { return test_plugin_new(); }
+DeckPlugin *test_clone(DeckPlugin *self, int action) {
+    return g_object_new(TEST_TYPE_PLUGIN, "action", &TEST_PLUGIN_INFO.actions[action], NULL);
+}
 
 void on_color_selected(GtkColorButton *widget, gpointer user_data) {
     TestPlugin *self = TEST_PLUGIN(user_data);
@@ -80,7 +86,22 @@ void set_surface(TestPlugin *self) {
     g_object_set(G_OBJECT(self), "preview", preview_surface, NULL);
 }
 
-void test_exec(DeckPlugin *self) {
+void test_0_config(DeckPlugin *self, GtkBox *parent) {
+    GList *iter = NULL;
+    TestPluginPrivate *priv = test_plugin_get_instance_private(TEST_PLUGIN(self));
+
+    GtkWidget *label = gtk_label_new("Color");
+    GtkWidget *button = gtk_color_button_new();
+
+    gtk_color_chooser_set_rgba(GTK_COLOR_CHOOSER(button), &(priv->color));
+
+    g_signal_connect(G_OBJECT(button), "color-set", G_CALLBACK(on_color_selected), self);
+
+    gtk_box_pack_start(parent, label, TRUE, FALSE, 5);
+    gtk_box_pack_start(parent, button, TRUE, FALSE, 5);
+}
+
+void test_0_exec(DeckPlugin *self) {
     TestPluginPrivate *priv = test_plugin_get_instance_private(TEST_PLUGIN(self));
     cairo_surface_t *preview_surface;
     cairo_t *cr;
@@ -97,17 +118,6 @@ void test_exec(DeckPlugin *self) {
     g_usleep(500000);
 }
 
-void test_config_widget(DeckPlugin *self, GtkBox *parent) {
-    GList *iter = NULL;
-    TestPluginPrivate *priv = test_plugin_get_instance_private(TEST_PLUGIN(self));
+void test_1_config(DeckPlugin *self, GtkBox *parent) {}
 
-    GtkWidget *label = gtk_label_new("Color");
-    GtkWidget *button = gtk_color_button_new();
-
-    gtk_color_chooser_set_rgba(GTK_COLOR_CHOOSER(button), &(priv->color));
-
-    g_signal_connect(G_OBJECT(button), "color-set", G_CALLBACK(on_color_selected), self);
-
-    gtk_box_pack_start(parent, label, TRUE, FALSE, 5);
-    gtk_box_pack_start(parent, button, TRUE, FALSE, 5);
-}
+void test_1_exec(DeckPlugin *self) {}

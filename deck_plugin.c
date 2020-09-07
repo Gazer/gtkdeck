@@ -11,7 +11,7 @@ typedef struct _DeckPluginPrivate {
 
 G_DEFINE_TYPE_WITH_PRIVATE(DeckPlugin, deck_plugin, G_TYPE_OBJECT)
 
-typedef enum { PREVIEW = 1, N_PROPERTIES } DeckPluginProperty;
+typedef enum { PREVIEW = 1, ACTION, N_PROPERTIES } DeckPluginProperty;
 
 static GParamSpec *obj_properties[N_PROPERTIES] = {
     NULL,
@@ -25,6 +25,10 @@ static void deck_plugin_set_property(GObject *object, guint property_id, const G
     DeckPluginPrivate *priv = deck_plugin_get_instance_private(self);
 
     switch ((DeckPluginProperty)property_id) {
+    case ACTION: {
+        priv->action = g_value_get_pointer(value);
+        break;
+    }
     case PREVIEW: {
         priv->surface = g_value_get_pointer(value);
         break;
@@ -36,7 +40,22 @@ static void deck_plugin_set_property(GObject *object, guint property_id, const G
     }
 }
 static void deck_plugin_get_property(GObject *object, guint property_id, GValue *value,
-                                     GParamSpec *pspec) {}
+                                     GParamSpec *pspec) {
+
+    DeckPlugin *self = DECK_PLUGIN(object);
+    DeckPluginPrivate *priv = deck_plugin_get_instance_private(self);
+
+    switch ((DeckPluginProperty)property_id) {
+    case ACTION: {
+        g_value_set_pointer(value, priv->action);
+        break;
+    }
+    default:
+        /* We don't have any other property... */
+        G_OBJECT_WARN_INVALID_PROPERTY_ID(object, property_id, pspec);
+        break;
+    }
+}
 
 static void deck_plugin_init(DeckPlugin *self) {}
 
@@ -63,6 +82,9 @@ static void deck_plugin_class_init(DeckPluginClass *klass) {
 
     klass->pool = g_thread_pool_new(process_plugin_exec, NULL, 5, TRUE, NULL);
 
+    obj_properties[ACTION] =
+        g_param_spec_pointer("action", "Action", "Plugin action to execute.", G_PARAM_READWRITE);
+
     obj_properties[PREVIEW] =
         g_param_spec_pointer("preview", "Preview", "Preview image to show.", G_PARAM_READWRITE);
 
@@ -80,11 +102,11 @@ DeckPluginInfo *deck_plugin_get_info(DeckPlugin *self) {
      * depending on the intent of the class, either ignore it silently
      * or warn the user.
      */
-    g_return_val_if_fail(klass->clone != NULL, NULL);
+    g_return_val_if_fail(klass->info != NULL, NULL);
     return klass->info(self);
 }
 
-DeckPlugin *deck_plugin_clone(DeckPlugin *self) {
+DeckPlugin *deck_plugin_new_with_action(DeckPlugin *self, int action) {
     DeckPluginClass *klass;
     g_return_val_if_fail(DECK_IS_PLUGIN(self), NULL);
 
@@ -96,57 +118,26 @@ DeckPlugin *deck_plugin_clone(DeckPlugin *self) {
      * or warn the user.
      */
     g_return_val_if_fail(klass->clone != NULL, NULL);
-    return klass->clone(self);
+    return klass->clone(self, action);
 }
 
 void process_plugin_exec(gpointer data, gpointer user_data) {
     DeckPlugin *self = DECK_PLUGIN(data);
-    DeckPluginClass *klass;
-    g_return_if_fail(DECK_IS_PLUGIN(self));
+    DeckPluginPrivate *priv = deck_plugin_get_instance_private(self);
 
-    klass = DECK_PLUGIN_GET_CLASS(self);
-
-    /* if the method is purely virtual, then it is a good idea to
-     * check that it has been overridden before calling it, and,
-     * depending on the intent of the class, either ignore it silently
-     * or warn the user.
-     */
-    g_return_if_fail(klass->config_widget != NULL);
-    klass->exec(data);
+    priv->action->exec(data);
 
     deck_plugin_reset(self);
 }
 
 void deck_plugin_exec(DeckPlugin *self) {
-    DeckPluginClass *klass;
-    g_return_if_fail(DECK_IS_PLUGIN(self));
-
-    klass = DECK_PLUGIN_GET_CLASS(self);
-
-    /* if the method is purely virtual, then it is a good idea to
-     * check that it has been overridden before calling it, and,
-     * depending on the intent of the class, either ignore it silently
-     * or warn the user.
-     */
-    g_return_if_fail(klass->config_widget != NULL);
-
+    DeckPluginClass *klass = DECK_PLUGIN_GET_CLASS(self);
     g_thread_pool_push(klass->pool, self, NULL);
 }
 
 void deck_plugin_get_config_widget(DeckPlugin *self, GtkBox *parent) {
-    DeckPluginClass *klass;
-    g_return_if_fail(DECK_IS_PLUGIN(self));
-
-    klass = DECK_PLUGIN_GET_CLASS(self);
-
-    /* if the method is purely virtual, then it is a good idea to
-     * check that it has been overridden before calling it, and,
-     * depending on the intent of the class, either ignore it silently
-     * or warn the user.
-     */
-    g_return_if_fail(klass->config_widget != NULL);
-    printf("call virtual\n");
-    return klass->config_widget(self, parent);
+    DeckPluginPrivate *priv = deck_plugin_get_instance_private(self);
+    priv->action->config(self, parent);
 }
 
 cairo_surface_t *deck_plugin_get_surface(DeckPlugin *self) {
