@@ -41,7 +41,7 @@ struct _DeckPluginClass {
 GType deck_plugin_get_type();
 DeckPlugin *deck_plugin_clone(DeckPlugin *self);
 const gchar *deck_plugin_get_name(DeckPlugin *self);
-GtkWidget *deck_plugin_get_preview_widget(DeckPlugin *self);
+// GtkWidget *deck_plugin_get_preview_widget(DeckPlugin *self);
 void deck_plugin_get_config_widget(DeckPlugin *self, GtkBox *parent);
 void deck_plugin_exec(DeckPlugin *self);
 cairo_surface_t *deck_plugin_get_surface(DeckPlugin *self);

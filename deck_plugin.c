@@ -54,6 +54,7 @@ static void deck_plugin_finalize(GObject *object) {
     }
 
     G_OBJECT_CLASS(deck_plugin_parent_class)->finalize(object);
+    printf("Pluging finalized\n");
 }
 
 static void deck_plugin_class_init(DeckPluginClass *klass) {
@@ -94,24 +95,6 @@ DeckPlugin *deck_plugin_clone(DeckPlugin *self) {
      */
     g_return_val_if_fail(klass->clone != NULL, NULL);
     return klass->clone(self);
-}
-
-void on_preview_updated(GObject *gobject, GParamSpec *pspec, gpointer user_data) {
-    DeckPlugin *self = DECK_PLUGIN(gobject);
-
-    DeckPluginPrivate *priv = deck_plugin_get_instance_private(self);
-    GtkImage *image = GTK_IMAGE(user_data);
-
-    gtk_image_set_from_surface(image, priv->surface);
-}
-
-GtkWidget *deck_plugin_get_preview_widget(DeckPlugin *self) {
-    DeckPluginPrivate *priv = deck_plugin_get_instance_private(self);
-    GtkWidget *preview = gtk_image_new_from_surface(priv->surface);
-
-    g_signal_connect(self, "notify::preview", G_CALLBACK(on_preview_updated), preview);
-
-    return preview;
 }
 
 void process_plugin_exec(gpointer data, gpointer user_data) {
