@@ -1,4 +1,12 @@
-apt install libhidapi-dev libhidapi-libusb0
+## Install dependencies
 
-Check meson build system
-https://mesonbuild.com/Gnome-module.html
+$> apt install meson libhidapi-dev libhidapi-libusb0 libgtk-3-dev
+
+## Compile
+
+$> meson setup _build
+$> ninja -C _build
+
+## Run
+
+$> ./_build/gtkdeck
