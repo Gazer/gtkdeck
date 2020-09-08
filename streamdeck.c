@@ -31,7 +31,9 @@ typedef struct _StreamDeckPrivate {
     char *key_image_format;
     int max_packet_size;
     int packet_header_size;
-    GBytes *reset_command;
+
+    GBytes *(*reset_command)(StreamDeck *self);
+    GBytes *(*brightness_command)(StreamDeck *self, int percentage);
 
     char *key_state;
 
@@ -61,7 +63,7 @@ static void stream_deck_set_property(GObject *object, guint property_id, const G
         break;
     case KEY_STATES: {
         char *new_key_state = g_value_peek_pointer(value);
-        memcpy(priv->key_state, new_key_state, sizeof(priv->key_state));
+        memcpy(priv->key_state, new_key_state, priv->num_keys);
         // g_signal_emit_by_name(object, "key_state::0", NULL);
         break;
     }
@@ -83,8 +85,8 @@ static void stream_deck_set_property(GObject *object, guint property_id, const G
 
 static void stream_deck_get_property(GObject *object, guint property_id, GValue *value,
                                      GParamSpec *pspec) {
-    StreamDeck *self = STREAM_DECK(object);
-    StreamDeckPrivate *priv = stream_deck_get_instance_private(self);
+    // StreamDeck *self = STREAM_DECK(object);
+    // StreamDeckPrivate *priv = stream_deck_get_instance_private(self);
 
     switch ((StreamDeckProperty)property_id) {
     case DEVICE:
@@ -117,7 +119,7 @@ gpointer read_key_states(gpointer data) {
 
     while (TRUE) {
         memset(key_state, 0, sizeof(key_state));
-        int n = hid_read(priv->handle, key_state, sizeof(key_state));
+        hid_read(priv->handle, key_state, sizeof(key_state));
 
         for (int i = 0; i < 15; i++) {
             if (priv->key_state[i] != key_state[priv->key_read_header + i]) {
@@ -130,7 +132,7 @@ gpointer read_key_states(gpointer data) {
             }
         }
 
-        memcpy(priv->key_state, key_state + 4, sizeof(priv->key_state));
+        memcpy(priv->key_state, key_state + 4, priv->num_keys);
 
         // g_object_set(G_OBJECT(deck), "key_states", key_state + 4, NULL);
 
@@ -228,6 +230,8 @@ GList *stream_deck_list() {
     stream_deck_init_original_v2(deck);
 
     device_list = g_list_append(device_list, deck);
+
+    return device_list;
 }
 
 void stream_deck_free(GList *devices) {
@@ -239,42 +243,44 @@ void stream_deck_free(GList *devices) {
 void stream_deck_info(StreamDeck *self) {
     StreamDeckPrivate *priv = stream_deck_get_instance_private(self);
     wchar_t wstr[255];
-    int res;
 
     printf("Found StreamDeck device\n");
-    res = hid_get_manufacturer_string(priv->handle, wstr, 255);
+    hid_get_manufacturer_string(priv->handle, wstr, 255);
     wprintf(L"Manufacturer String: %s\n", wstr);
 
     // Read the Product String
-    res = hid_get_product_string(priv->handle, wstr, 255);
+    hid_get_product_string(priv->handle, wstr, 255);
     wprintf(L"Product String: %s\n", wstr);
 
     // Read the Serial Number String
-    res = hid_get_serial_number_string(priv->handle, wstr, 255);
+    hid_get_serial_number_string(priv->handle, wstr, 255);
     wprintf(L"Serial Number String: (%d) %s\n", wstr[0], wstr);
 
     // Read Indexed String 1
-    res = hid_get_indexed_string(priv->handle, 1, wstr, 255);
+    hid_get_indexed_string(priv->handle, 1, wstr, 255);
     wprintf(L"Indexed String 1: %s\n", wstr);
 }
 
 void stream_deck_reset_to_logo(StreamDeck *self) {
     StreamDeckPrivate *priv = stream_deck_get_instance_private(self);
+    GBytes *bytes = priv->reset_command(self);
     gsize size;
-    unsigned char *buffer = g_bytes_get_data(priv->reset_command, &size);
+    const unsigned char *buffer = g_bytes_get_data(bytes, &size);
 
     hid_send_feature_report(priv->handle, buffer, size);
+
+    g_bytes_unref(bytes);
 }
 
 void stream_deck_set_brightness(StreamDeck *self, int percentage) {
-    unsigned char resetCommandBuffer[32] = {0x03, 0x08, percentage, 0x00, 0x00, 0x00, 0x00, 0x00,
-                                            0x00, 0x00, 0x00,       0x00, 0x00, 0x00, 0x00, 0x00,
-                                            0x00, 0x00, 0x00,       0x00, 0x00, 0x00, 0x00, 0x00,
-                                            0x00, 0x00, 0x00,       0x00, 0x00, 0x00, 0x00, 0x00};
-
     StreamDeckPrivate *priv = stream_deck_get_instance_private(self);
+    GBytes *bytes = priv->brightness_command(self, percentage);
+    gsize size;
+    const unsigned char *buffer = g_bytes_get_data(bytes, &size);
 
-    hid_send_feature_report(priv->handle, resetCommandBuffer, 32);
+    hid_send_feature_report(priv->handle, buffer, size);
+
+    g_bytes_unref(bytes);
 }
 
 GString *stream_deck_get_firmware_version(StreamDeck *self) {
@@ -288,7 +294,7 @@ GString *stream_deck_get_firmware_version(StreamDeck *self) {
     buf[0] = 5;
 
     hid_get_feature_report(priv->handle, buf, sizeof(buf));
-    g_string_assign(value, &buf[6]);
+    g_string_assign(value, (const char *)(buf + 6));
 
     return value;
 }
@@ -304,7 +310,7 @@ GString *stream_deck_get_serial_number(StreamDeck *self) {
     buf[0] = 6;
 
     hid_get_feature_report(priv->handle, buf, sizeof(buf));
-    g_string_assign(value, &buf[2]);
+    g_string_assign(value, (const gchar *)(buf + 2));
 
     return value;
 }
@@ -405,7 +411,6 @@ void write_image(StreamDeckPrivate *priv, int key, GBytes *image_bytes) {
 
 void fill_image_range(StreamDeckPrivate *priv, int key, unsigned char *buffer, int buffer_size,
                       int offset, int stride) {
-    int bytes_size;
     if (key < 0 || key >= priv->num_keys) {
         g_error("Invalid key number");
         return;
@@ -482,6 +487,21 @@ void stream_deck_set_image_from_surface(StreamDeck *self, int key, cairo_surface
 unsigned char original_reset_bytes[] = {
     0x03, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+
+GBytes *original_v2_reset_bytes(StreamDeck *deck) {
+    return g_bytes_new_static(original_reset_bytes, 32);
+}
+
+GBytes *original_v2_brightness_command(StreamDeck *self, int percentage) {
+    unsigned char *bytes = g_malloc0(sizeof(unsigned char) * 32);
+
+    bytes[0] = 0x03;
+    bytes[1] = 0x08;
+    bytes[2] = percentage;
+
+    return g_bytes_new(bytes, 32);
+}
+
 void stream_deck_init_original_v2(StreamDeck *deck) {
     StreamDeckPrivate *priv = stream_deck_get_instance_private(deck);
 
@@ -497,11 +517,27 @@ void stream_deck_init_original_v2(StreamDeck *deck) {
     priv->key_read_header = 4;
     priv->max_packet_size = 1024;
     priv->packet_header_size = 8;
-    priv->reset_command = g_bytes_new_static(original_reset_bytes, 32);
+    priv->reset_command = original_v2_reset_bytes;
+    priv->brightness_command = original_v2_brightness_command;
 }
 
 unsigned char mini_reset_bytes[] = {0x0B, 0x63, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
                                     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+
+GBytes *mini_reset_command(StreamDeck *deck) { return g_bytes_new_static(mini_reset_bytes, 17); }
+
+GBytes *mini_brightness_command(StreamDeck *self, int percentage) {
+    unsigned char *bytes = g_malloc0(sizeof(unsigned char) * 17);
+
+    bytes[0] = 0x05;
+    bytes[1] = 0x55;
+    bytes[2] = 0xaa;
+    bytes[3] = 0xd1;
+    bytes[4] = 0x01;
+    bytes[5] = percentage;
+
+    return g_bytes_new(bytes, 17);
+}
 
 void stream_deck_init_mini(StreamDeck *deck) {
     StreamDeckPrivate *priv = stream_deck_get_instance_private(deck);
@@ -518,5 +554,6 @@ void stream_deck_init_mini(StreamDeck *deck) {
     priv->key_read_header = 1;
     priv->max_packet_size = 1024;
     priv->packet_header_size = 16;
-    priv->reset_command = g_bytes_new_static(mini_reset_bytes, 17);
+    priv->reset_command = mini_reset_command;
+    priv->brightness_command = mini_brightness_command;
 }
