@@ -46,14 +46,14 @@ struct _StreamDeck {
 GType stream_deck_get_type();
 GList *stream_deck_list();
 void stream_deck_free(GList *devices);
-void stream_deck_info(StreamDeck *sd);
-void stream_deck_reset_to_logo(StreamDeck *sd);
-void stream_deck_set_brightness(StreamDeck *sd, int percentage);
-GString *stream_deck_get_firmware_version(StreamDeck *sd);
-GString *stream_deck_get_serial_number(StreamDeck *sd);
-void stream_deck_fill_color(StreamDeck *sd, int key, int r, int g, int b);
-void stream_deck_set_image_from_file(StreamDeck *sd, int key, gchar *file);
-void stream_deck_set_image_from_surface(StreamDeck *sd, int key, cairo_surface_t *surface);
+void stream_deck_info(StreamDeck *self);
+void stream_deck_reset_to_logo(StreamDeck *self);
+void stream_deck_set_brightness(StreamDeck *self, int percentage);
+GString *stream_deck_get_firmware_version(StreamDeck *self);
+GString *stream_deck_get_serial_number(StreamDeck *self);
+void stream_deck_fill_color(StreamDeck *self, int key, int r, int g, int b);
+void stream_deck_set_image_from_file(StreamDeck *self, int key, gchar *file);
+void stream_deck_set_image_from_surface(StreamDeck *self, int key, cairo_surface_t *surface);
 
 G_END_DECLS
 

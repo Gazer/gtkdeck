@@ -6,6 +6,14 @@
 #define LTR 0
 #define RTL 1
 
+#define STREAM_DECK_ORIGINAL 1
+#define STREAM_DECK_MINI 2
+#define STREAM_DECK_XL 3
+#define STREAM_DECK_ORIGINAL_V2 4
+
+void stream_deck_init_original_v2(StreamDeck *deck);
+void stream_deck_init_mini(StreamDeck *deck);
+
 typedef struct _StreamDeckPrivate {
     hid_device *handle;
     GThread *read_thread;
@@ -16,27 +24,25 @@ typedef struct _StreamDeckPrivate {
     int icon_size;
     int key_direction;
     int key_data_offset;
+    int key_flip_h;
+    int key_flip_v;
+    int key_rotation;
+    int key_read_header;
+    char *key_image_format;
+    int max_packet_size;
+    int packet_header_size;
+    GBytes *reset_command;
+
     char *key_state;
 
     // calculated
     int num_keys;
     int icon_bytes;
-    int max_packet_size;
-    int packet_header_size;
 } StreamDeckPrivate;
 
 G_DEFINE_TYPE_WITH_PRIVATE(StreamDeck, stream_deck, G_TYPE_OBJECT)
 
-typedef enum {
-    DEVICE = 1,
-    ROWS,
-    COLUMNS,
-    ICON_SIZE,
-    KEY_DIRECTION,
-    KEY_DATA_OFFSET,
-    KEY_STATES,
-    N_PROPERTIES
-} StreamDeckProperty;
+typedef enum { DEVICE = 1, TYPE, KEY_STATES, N_PROPERTIES } StreamDeckProperty;
 
 static GParamSpec *obj_properties[N_PROPERTIES] = {
     NULL,
@@ -59,22 +65,15 @@ static void stream_deck_set_property(GObject *object, guint property_id, const G
         // g_signal_emit_by_name(object, "key_state::0", NULL);
         break;
     }
-    case ROWS:
-        priv->rows = g_value_get_int(value);
+    case TYPE: {
+        int type = g_value_get_int(value);
+        if (type == STREAM_DECK_ORIGINAL_V2) {
+            stream_deck_init_original_v2(self);
+        } else if (type == STREAM_DECK_MINI) {
+            stream_deck_init_mini(self);
+        }
         break;
-    case COLUMNS:
-        priv->columns = g_value_get_int(value);
-        break;
-    case ICON_SIZE:
-        priv->icon_size = g_value_get_int(value);
-        break;
-    case KEY_DIRECTION:
-        priv->key_direction = g_value_get_int(value);
-        break;
-    case KEY_DATA_OFFSET:
-        priv->key_data_offset = g_value_get_int(value);
-        break;
-
+    }
     default:
         /* We don't have any other property... */
         G_OBJECT_WARN_INVALID_PROPERTY_ID(object, property_id, pspec);
@@ -114,15 +113,15 @@ static void stream_deck_init(StreamDeck *self) {
 gpointer read_key_states(gpointer data) {
     StreamDeck *deck = STREAM_DECK(data);
     StreamDeckPrivate *priv = stream_deck_get_instance_private(deck);
-    unsigned char key_state[4 + 15];
+    unsigned char key_state[priv->key_read_header + priv->num_keys];
 
     while (TRUE) {
         memset(key_state, 0, sizeof(key_state));
-        int n = hid_read_timeout(priv->handle, key_state, sizeof(key_state), 50);
+        int n = hid_read(priv->handle, key_state, sizeof(key_state));
 
         for (int i = 0; i < 15; i++) {
-            if (priv->key_state[i] != key_state[4 + i]) {
-                if (key_state[4 + i] == 1) {
+            if (priv->key_state[i] != key_state[priv->key_read_header + i]) {
+                if (key_state[priv->key_read_header + i] == 1) {
                     printf("%d pressed\n", i);
                     g_signal_emit(G_OBJECT(deck), signals[0], 0, i);
                 } else {
@@ -157,8 +156,8 @@ static void stream_deck_constructed(GObject *object) {
     // Probably here we need to know the model/generation
     priv->num_keys = priv->rows * priv->columns;
     priv->icon_bytes = priv->icon_size * priv->icon_size * 3;
-    priv->max_packet_size = 1024;
-    priv->packet_header_size = 8;
+    // priv->max_packet_size = 1024;
+    // priv->packet_header_size = 8;
     priv->key_state = g_new0(char, priv->num_keys);
 
     priv->read_thread = g_thread_new("deck", read_key_states, object);
@@ -203,33 +202,10 @@ static void stream_deck_class_init(StreamDeckClass *klass) {
     obj_properties[KEY_STATES] = g_param_spec_pointer(
         "key_states", "Key State", "Array of state of each key", G_PARAM_READWRITE);
 
-    obj_properties[ROWS] = g_param_spec_int("rows", "Rows", "Rows.", 1, 10, 1,
+    obj_properties[TYPE] = g_param_spec_int("type", "Device type", "Device type.", 1, 4, 1,
                                             G_PARAM_CONSTRUCT_ONLY | G_PARAM_READWRITE);
 
-    obj_properties[COLUMNS] = g_param_spec_int("columns", "Columns", "Columns.", 1, 10, 1,
-                                               G_PARAM_CONSTRUCT_ONLY | G_PARAM_READWRITE);
-
-    obj_properties[ICON_SIZE] = g_param_spec_int("icon_size", "Icon size", "Icon size.", 1, 100, 1,
-                                                 G_PARAM_CONSTRUCT_ONLY | G_PARAM_READWRITE);
-
-    obj_properties[KEY_DIRECTION] =
-        g_param_spec_int("key_direction", "Key direction", "Key direction.", 0, 1, 0,
-                         G_PARAM_CONSTRUCT_ONLY | G_PARAM_READWRITE);
-
-    obj_properties[KEY_DATA_OFFSET] =
-        g_param_spec_int("key_data_offset", "Key data offset", "Key data offset.", 1, G_MAXINT, 1,
-                         G_PARAM_CONSTRUCT_ONLY | G_PARAM_READWRITE);
-
     g_object_class_install_properties(object_class, N_PROPERTIES, obj_properties);
-}
-
-StreamDeck *stream_deck_new(hid_device *handle, int rows, int columns, int icon_size,
-                            int key_direction, int key_data_offset) {
-    StreamDeck *deck = g_object_new(STREAM_TYPE_DECK, "device", handle, "rows", rows, "columns",
-                                    columns, "icon_size", icon_size, "key_direction", key_direction,
-                                    "key_data_offset", key_data_offset, NULL);
-
-    return deck;
 }
 
 void stream_deck_exit() { hid_exit(); }
@@ -248,7 +224,9 @@ GList *stream_deck_list() {
 
     handle = hid_open(0x0fd9, 0x006d, NULL);
     // hid_set_nonblocking(handle, 1);
-    deck = stream_deck_new(handle, 3, 5, 72, LTR, 4);
+    deck = g_object_new(STREAM_TYPE_DECK, "device", handle, "type", STREAM_DECK_ORIGINAL_V2, NULL);
+    stream_deck_init_original_v2(deck);
+
     device_list = g_list_append(device_list, deck);
 }
 
@@ -258,8 +236,8 @@ void stream_deck_free(GList *devices) {
     g_list_free(devices);
 }
 
-void stream_deck_info(StreamDeck *sd) {
-    StreamDeckPrivate *priv = stream_deck_get_instance_private(sd);
+void stream_deck_info(StreamDeck *self) {
+    StreamDeckPrivate *priv = stream_deck_get_instance_private(self);
     wchar_t wstr[255];
     int res;
 
@@ -280,31 +258,27 @@ void stream_deck_info(StreamDeck *sd) {
     wprintf(L"Indexed String 1: %s\n", wstr);
 }
 
-void stream_deck_reset_to_logo(StreamDeck *sd) {
-    // TODO: This is model specific
-    unsigned char resetCommandBuffer[32] = {0x03, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                                            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                                            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                                            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+void stream_deck_reset_to_logo(StreamDeck *self) {
+    StreamDeckPrivate *priv = stream_deck_get_instance_private(self);
+    gsize size;
+    unsigned char *buffer = g_bytes_get_data(priv->reset_command, &size);
 
-    StreamDeckPrivate *priv = stream_deck_get_instance_private(sd);
-
-    hid_send_feature_report(priv->handle, resetCommandBuffer, 32);
+    hid_send_feature_report(priv->handle, buffer, size);
 }
 
-void stream_deck_set_brightness(StreamDeck *sd, int percentage) {
+void stream_deck_set_brightness(StreamDeck *self, int percentage) {
     unsigned char resetCommandBuffer[32] = {0x03, 0x08, percentage, 0x00, 0x00, 0x00, 0x00, 0x00,
                                             0x00, 0x00, 0x00,       0x00, 0x00, 0x00, 0x00, 0x00,
                                             0x00, 0x00, 0x00,       0x00, 0x00, 0x00, 0x00, 0x00,
                                             0x00, 0x00, 0x00,       0x00, 0x00, 0x00, 0x00, 0x00};
 
-    StreamDeckPrivate *priv = stream_deck_get_instance_private(sd);
+    StreamDeckPrivate *priv = stream_deck_get_instance_private(self);
 
     hid_send_feature_report(priv->handle, resetCommandBuffer, 32);
 }
 
-GString *stream_deck_get_firmware_version(StreamDeck *sd) {
-    StreamDeckPrivate *priv = stream_deck_get_instance_private(sd);
+GString *stream_deck_get_firmware_version(StreamDeck *self) {
+    StreamDeckPrivate *priv = stream_deck_get_instance_private(self);
     GString *value = g_string_new(NULL);
     // GEN1 - 17
     // GEN2 - 32
@@ -319,8 +293,8 @@ GString *stream_deck_get_firmware_version(StreamDeck *sd) {
     return value;
 }
 
-GString *stream_deck_get_serial_number(StreamDeck *sd) {
-    StreamDeckPrivate *priv = stream_deck_get_instance_private(sd);
+GString *stream_deck_get_serial_number(StreamDeck *self) {
+    StreamDeckPrivate *priv = stream_deck_get_instance_private(self);
     GString *value = g_string_new(NULL);
     // GEN1 - 17
     // GEN2 - 32
@@ -442,8 +416,8 @@ void fill_image_range(StreamDeckPrivate *priv, int key, unsigned char *buffer, i
     write_image(priv, key, image_bytes);
 }
 
-void stream_deck_fill_color(StreamDeck *sd, int key, int r, int g, int b) {
-    StreamDeckPrivate *priv = stream_deck_get_instance_private(sd);
+void stream_deck_fill_color(StreamDeck *self, int key, int r, int g, int b) {
+    StreamDeckPrivate *priv = stream_deck_get_instance_private(self);
     unsigned char buf[priv->icon_bytes];
     unsigned char tmp[3] = {r, g, b};
 
@@ -469,32 +443,80 @@ void stream_deck_fill_color(StreamDeck *sd, int key, int r, int g, int b) {
     fill_image_range(priv, key, buf, priv->icon_bytes, 0, priv->icon_size * 3);
 }
 
-void generic_set_image(StreamDeck *sd, int key, GdkPixbuf *original) {
-    StreamDeckPrivate *priv = stream_deck_get_instance_private(sd);
+void generic_set_image(StreamDeck *self, int key, GdkPixbuf *original) {
+    StreamDeckPrivate *priv = stream_deck_get_instance_private(self);
     GdkPixbuf *scaled;
     gchar *buffer;
     gsize size;
     GError *error = NULL;
 
-    scaled = gdk_pixbuf_scale_simple(original, 72, 72, GDK_INTERP_BILINEAR);
-    scaled = gdk_pixbuf_flip(scaled, FALSE);
-    scaled = gdk_pixbuf_flip(scaled, TRUE);
+    scaled =
+        gdk_pixbuf_scale_simple(original, priv->icon_size, priv->icon_size, GDK_INTERP_BILINEAR);
+    if (priv->key_flip_h) {
+        scaled = gdk_pixbuf_flip(scaled, FALSE);
+    }
+    if (priv->key_flip_v) {
+        scaled = gdk_pixbuf_flip(scaled, TRUE);
+    }
 
-    gdk_pixbuf_save_to_buffer(scaled, &buffer, &size, "jpeg", &error, NULL);
+    gdk_pixbuf_save_to_buffer(scaled, &buffer, &size, priv->key_image_format, &error, NULL);
 
     GBytes *image_bytes = g_bytes_new(buffer, size);
 
     write_image(priv, key, image_bytes);
 }
 
-void stream_deck_set_image_from_file(StreamDeck *sd, int key, gchar *file) {
+void stream_deck_set_image_from_file(StreamDeck *self, int key, gchar *file) {
     GdkPixbuf *original = gdk_pixbuf_new_from_file(file, NULL);
 
-    generic_set_image(sd, key, original);
+    generic_set_image(self, key, original);
 }
 
-void stream_deck_set_image_from_surface(StreamDeck *sd, int key, cairo_surface_t *surface) {
+void stream_deck_set_image_from_surface(StreamDeck *self, int key, cairo_surface_t *surface) {
     GdkPixbuf *original = gdk_pixbuf_get_from_surface(surface, 0, 0, 72, 72);
 
-    generic_set_image(sd, key, original);
+    generic_set_image(self, key, original);
+}
+
+// Private Initializers
+unsigned char original_reset_bytes[] = {
+    0x03, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+void stream_deck_init_original_v2(StreamDeck *deck) {
+    StreamDeckPrivate *priv = stream_deck_get_instance_private(deck);
+
+    priv->rows = 3;
+    priv->columns = 5;
+    priv->icon_size = 72;
+    priv->key_direction = LTR;
+    priv->key_data_offset = 4;
+    priv->key_flip_h = 1;
+    priv->key_flip_v = 1;
+    priv->key_rotation = 0;
+    priv->key_image_format = "jpeg";
+    priv->key_read_header = 4;
+    priv->max_packet_size = 1024;
+    priv->packet_header_size = 8;
+    priv->reset_command = g_bytes_new_static(original_reset_bytes, 32);
+}
+
+unsigned char mini_reset_bytes[] = {0x0B, 0x63, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                                    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+
+void stream_deck_init_mini(StreamDeck *deck) {
+    StreamDeckPrivate *priv = stream_deck_get_instance_private(deck);
+
+    priv->rows = 2;
+    priv->columns = 3;
+    priv->icon_size = 80;
+    priv->key_direction = LTR;
+    priv->key_data_offset = 4;
+    priv->key_flip_h = 0;
+    priv->key_flip_v = 1;
+    priv->key_rotation = 90;
+    priv->key_image_format = "bmp";
+    priv->key_read_header = 1;
+    priv->max_packet_size = 1024;
+    priv->packet_header_size = 16;
+    priv->reset_command = g_bytes_new_static(mini_reset_bytes, 17);
 }
