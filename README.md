@@ -1,6 +1,6 @@
 ## Install dependencies
 
-$> apt install meson libhidapi-dev libhidapi-libusb0 libgtk-3-dev
+$> apt install xvkbd meson libhidapi-dev libhidapi-libusb0 libgtk-3-dev
 
 ## Compile
 

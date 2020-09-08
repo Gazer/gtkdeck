@@ -1,6 +1,7 @@
 #include "system_plugin.h"
 
 #include "website.h"
+#include "text.h"
 
 DeckPlugin *system_plugin_clone(DeckPlugin *self, int action);
 DeckPluginInfo *system_plugin_info(DeckPlugin *self);
@@ -17,13 +18,15 @@ static GParamSpec *obj_properties[N_PROPERTIES] = {
     NULL,
 };
 
-typedef enum { WEBSITE = 0, N_ACTIONS } SystemActionCodes;
+typedef enum { WEBSITE = 0, TEXT, N_ACTIONS } SystemActionCodes;
 
 DeckPluginInfo SYSTEM_PLUGIN_INFO = {
     "System",
     N_ACTIONS,
     {
         {"Website", WEBSITE, website_config, website_exec},
+        {"Text", TEXT, text_config, text_exec},
+        NULL
         // {"Always Red", RED_BUTTON, test_1_config, test_1_exec},
     },
 };

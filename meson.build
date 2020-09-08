@@ -13,7 +13,9 @@ gtkdeps = [
 
 # Maybe use subdir instead
 plugins = [
-    static_library('system_plugin', files(['system_plugin/system_plugin.c', 'system_plugin/website.c']), dependencies : gtkdeps)
+    static_library('system_plugin',
+      files(['system_plugin/system_plugin.c', 'system_plugin/website.c', 'system_plugin/text.c']),
+      dependencies : gtkdeps)
 ]
 
 resource_data = files(
