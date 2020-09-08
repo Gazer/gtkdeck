@@ -49,6 +49,9 @@ struct _DeckPluginClass {
  * Method definitions.
  */
 GType deck_plugin_get_type();
+GList *deck_plugin_list();
+void deck_plugin_exit();
+void deck_plugin_register(DeckPlugin *plugin);
 DeckPlugin *deck_plugin_new_with_action(DeckPlugin *self, int action);
 DeckPluginInfo *deck_plugin_get_info(DeckPlugin *self);
 void deck_plugin_get_config_widget(DeckPlugin *self, GtkBox *parent);

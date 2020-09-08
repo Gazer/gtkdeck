@@ -87,7 +87,6 @@ void set_surface(TestPlugin *self) {
 }
 
 void test_0_config(DeckPlugin *self, GtkBox *parent) {
-    GList *iter = NULL;
     TestPluginPrivate *priv = test_plugin_get_instance_private(TEST_PLUGIN(self));
 
     GtkWidget *label = gtk_label_new("Color");

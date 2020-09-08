@@ -288,9 +288,10 @@ static void activate(GtkApplication *app, gpointer user_data) {
     StreamDeck *device = STREAM_DECK(devices->data);
 
     // Load and init plugins
-    plugin_list = g_list_append(plugin_list, test_plugin_new());
+    plugin_list = deck_plugin_list();
 
-    builder = gtk_builder_new_from_file("main.glade");
+    // builder = gtk_builder_new_from_file("main.glade");
+    builder = gtk_builder_new_from_resource("/ar/com/p39/gtkdeck/main.glade");
 
     init_device_info(builder, device);
 
@@ -352,6 +353,7 @@ int main(int argc, char **argv) {
     status = g_application_run(G_APPLICATION(app), argc, argv);
 
     stream_deck_free(devices);
+    deck_plugin_exit();
 
     g_object_unref(app);
 

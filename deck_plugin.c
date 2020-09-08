@@ -3,6 +3,12 @@
 #include <glib-object.h>
 #include <libusb-1.0/libusb.h>
 
+// Plugins
+#include "test_plugin.h"
+#include "system_plugin/system_plugin.h"
+
+static GList *available_plugins = NULL;
+
 typedef struct _DeckPluginPrivate {
     DeckPluginAction *action;
     cairo_surface_t *surface;
@@ -39,6 +45,7 @@ static void deck_plugin_set_property(GObject *object, guint property_id, const G
         break;
     }
 }
+
 static void deck_plugin_get_property(GObject *object, guint property_id, GValue *value,
                                      GParamSpec *pspec) {
 
@@ -90,6 +97,21 @@ static void deck_plugin_class_init(DeckPluginClass *klass) {
 
     g_object_class_install_properties(object_class, N_PROPERTIES, obj_properties);
 }
+
+GList *deck_plugin_list() {
+    if (available_plugins == NULL) {
+        // Register plugins
+        deck_plugin_register(test_plugin_new());
+        deck_plugin_register(system_plugin_new());
+    }
+    return available_plugins;
+}
+
+void deck_plugin_register(DeckPlugin *plugin) {
+    available_plugins = g_list_append(available_plugins, plugin);
+}
+
+void deck_plugin_exit() { g_list_free(available_plugins); }
 
 DeckPluginInfo *deck_plugin_get_info(DeckPlugin *self) {
     DeckPluginClass *klass;
