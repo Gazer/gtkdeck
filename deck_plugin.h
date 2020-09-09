@@ -22,6 +22,8 @@ typedef struct _DeckPluginAction {
     int code;
     void (*config)(DeckPlugin *self, GtkBox *parent);
     void (*exec)(DeckPlugin *self);
+    void (*save)(DeckPlugin *self, char *group, GKeyFile *key_file);
+    void (*load)(DeckPlugin *self, char *group, GKeyFile *key_file);
 } DeckPluginAction;
 
 typedef struct _DeckPluginInfo {
@@ -38,7 +40,6 @@ struct _DeckPluginClass {
     DeckPlugin *(*clone_with_code)(DeckPlugin *self, int code);
     void (*config_widget)(DeckPlugin *self, GtkBox *parent);
     void (*exec)(DeckPlugin *self);
-    void (*save)(DeckPlugin *self, int position, GKeyFile *key_file);
 
     GThreadPool *pool;
 

@@ -17,6 +17,12 @@ typedef enum { COLORED_BUTTON = 0, RED_BUTTON, N_ACTIONS } TestActionCodes;
 void test_0_config(DeckPlugin *self, GtkBox *parent);
 void test_1_config(DeckPlugin *self, GtkBox *parent);
 
+void test_0_save(DeckPlugin *self, char *group, GKeyFile *key_file);
+void test_1_save(DeckPlugin *self, char *group, GKeyFile *key_file);
+
+void test_0_load(DeckPlugin *self, char *group, GKeyFile *key_file);
+void test_1_load(DeckPlugin *self, char *group, GKeyFile *key_file);
+
 void test_0_exec(DeckPlugin *self);
 void test_1_exec(DeckPlugin *self);
 
@@ -24,8 +30,8 @@ DeckPluginInfo TEST_PLUGIN_INFO = {
     "Test Plugin",
     N_ACTIONS,
     {
-        {"Colored Button", COLORED_BUTTON, test_0_config, test_0_exec},
-        {"Always Red", RED_BUTTON, test_1_config, test_1_exec},
+        {"Colored Button", COLORED_BUTTON, test_0_config, test_0_exec, test_0_save, test_0_load},
+        {"Always Red", RED_BUTTON, test_1_config, test_1_exec, test_1_save, test_1_load},
     },
 };
 
@@ -133,3 +139,24 @@ void test_0_exec(DeckPlugin *self) {
 void test_1_config(DeckPlugin *self, GtkBox *parent) {}
 
 void test_1_exec(DeckPlugin *self) {}
+
+void test_0_save(DeckPlugin *self, char *group, GKeyFile *key_file) {
+    TestPluginPrivate *priv = test_plugin_get_instance_private(TEST_PLUGIN(self));
+
+    g_autofree char *color = gdk_rgba_to_string(&priv->color);
+
+    g_key_file_set_string(key_file, group, "color", color);
+}
+
+void test_0_load(DeckPlugin *self, char *group, GKeyFile *key_file) {
+    printf("  test_0_load\n");
+    TestPluginPrivate *priv = test_plugin_get_instance_private(TEST_PLUGIN(self));
+    gsize length;
+
+    g_autofree char *color = g_key_file_get_string(key_file, group, "color", NULL);
+    gdk_rgba_parse(&priv->color, color);
+}
+
+void test_1_save(DeckPlugin *self, char *group, GKeyFile *key_file) {}
+
+void test_1_load(DeckPlugin *self, char *group, GKeyFile *key_file) { printf(" Test 1 load\n"); }

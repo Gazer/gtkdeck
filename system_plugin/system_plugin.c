@@ -25,8 +25,8 @@ DeckPluginInfo SYSTEM_PLUGIN_INFO = {
     "System",
     N_ACTIONS,
     {
-        {"Website", WEBSITE, website_config, website_exec},
-        {"Text", TEXT, text_config, text_exec},
+        {"Website", WEBSITE, website_config, website_exec, website_save, website_load},
+        {"Text", TEXT, text_config, text_exec, text_save, website_load},
         NULL
         // {"Always Red", RED_BUTTON, test_1_config, test_1_exec},
     },
@@ -94,6 +94,7 @@ static void system_plugin_class_init(SystemPluginClass *klass) {
     deck_plugin_klass->info = system_plugin_info;
     deck_plugin_klass->clone = system_plugin_clone;
     deck_plugin_klass->clone_with_code = system_plugin_clone_with_code;
+    // deck_plugin_klass->save = system_plugin_save;
 
     GObjectClass *object_class = G_OBJECT_CLASS(klass);
     object_class->set_property = system_plugin_set_property;

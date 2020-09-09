@@ -146,8 +146,6 @@ void show_config(GtkButton *button, gpointer data) {
     GtkWidget *config_area;
     DeckPlugin *plugin = DECK_PLUGIN(g_object_get_data(G_OBJECT(button), "plugin"));
 
-    printf("Need to show button config\n");
-
     // Show Preview at the left
     children = gtk_container_get_children(GTK_CONTAINER(config_row));
     while (children != NULL) {
@@ -201,18 +199,22 @@ void on_deck_key_changed(GObject *gobject, int key, gpointer user_data) {
 void add_plugin_button(GtkGrid *grid, int key, StreamDeck *deck, DeckPlugin *plugin, int left,
                        int top) {
     GtkWidget *box = gtk_button_new();
-    g_object_set_data(G_OBJECT(plugin), "key", GINT_TO_POINTER(key));
 
     GtkWidget *widget = grid_button(key);
 
-    // If plugin updates, send the new image to the device
-    g_signal_connect(plugin, "notify::preview", G_CALLBACK(on_deck_preview_update_device), deck);
-    g_signal_connect(plugin, "notify::preview", G_CALLBACK(on_deck_preview_update_app), widget);
+    if (plugin != NULL) {
+        // If plugin updates, send the new image to the device
+        g_object_set_data(G_OBJECT(plugin), "key", GINT_TO_POINTER(key));
+
+        g_signal_connect(plugin, "notify::preview", G_CALLBACK(on_deck_preview_update_device),
+                         deck);
+        g_signal_connect(plugin, "notify::preview", G_CALLBACK(on_deck_preview_update_app), widget);
+        g_object_set_data(G_OBJECT(box), "plugin", plugin);
+        g_signal_connect(box, "clicked", G_CALLBACK(show_config), deck);
+    }
 
     gtk_drag_dest_set(box, GTK_DEST_DEFAULT_ALL, entries, 1, GDK_ACTION_COPY);
     g_signal_connect(box, "drag-data-received", G_CALLBACK(on_drag_data_received), grid);
-    g_object_set_data(G_OBJECT(box), "plugin", plugin);
-    g_signal_connect(box, "clicked", G_CALLBACK(show_config), deck);
 
     gtk_container_add(GTK_CONTAINER(box), widget);
 
@@ -385,6 +387,8 @@ int main(int argc, char **argv) {
     g_signal_connect(app, "activate", G_CALLBACK(activate), devices);
 
     status = g_application_run(G_APPLICATION(app), argc, argv);
+
+    save_config(devices->data);
 
     stream_deck_free(devices);
     deck_plugin_exit();

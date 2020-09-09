@@ -37,3 +37,7 @@ void text_exec(DeckPlugin *self) {
 
     g_free(command);
 }
+
+void text_save(DeckPlugin *self, char *group, GKeyFile *key_file) {}
+
+void text_load(DeckPlugin *self, char *group, GKeyFile *key_file) {}

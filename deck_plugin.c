@@ -34,6 +34,7 @@ static void deck_plugin_set_property(GObject *object, guint property_id, const G
     switch ((DeckPluginProperty)property_id) {
     case ACTION: {
         priv->action = g_value_get_pointer(value);
+        printf(">> Action set\n");
         break;
     }
     case NAME: {
@@ -220,7 +221,7 @@ void deck_plugin_reset(DeckPlugin *self) {
 char *surface_to_base64(cairo_surface_t *surface) {
     unsigned char *data;
     cairo_format_t format;
-    int width, height, stride;
+    int width, height;
     int data_size;
 
     // flush to ensure all writing to the image was done
@@ -249,10 +250,7 @@ char *surface_to_base64(cairo_surface_t *surface) {
 
 void deck_plugin_save(DeckPlugin *self, int position, GKeyFile *key_file) {
     g_return_if_fail(DECK_IS_PLUGIN(self));
-    DeckPluginClass *klass;
     DeckPluginPrivate *priv = deck_plugin_get_instance_private(self);
-
-    klass = DECK_PLUGIN_GET_CLASS(self);
 
     g_autofree char *group = g_strdup_printf("key_%d", position);
 
@@ -265,15 +263,7 @@ void deck_plugin_save(DeckPlugin *self, int position, GKeyFile *key_file) {
         g_key_file_set_string(key_file, group, "preview_image", preview_image);
     }
 
-    /* if the method is purely virtual, then it is a good idea to
-     * check that it has been overridden before calling it, and,
-     * depending on the intent of the class, either ignore it silently
-     * or warn the user.
-     */
-    g_return_if_fail(klass->save != NULL);
-
-    // Save plugin settings
-    klass->save(self, position, key_file);
+    priv->action->save(self, group, key_file);
 }
 
 DeckPlugin *deck_plugin_load(GKeyFile *key_file, const char *group) {
@@ -293,7 +283,12 @@ DeckPlugin *deck_plugin_load(GKeyFile *key_file, const char *group) {
 
         if (g_strcmp0(name, priv->name) == 0) {
             printf("  FOUND PLUGIN!\n");
-            return deck_plugin_new_with_action_code(plugin, code);
+
+            DeckPlugin *new_plugin = deck_plugin_new_with_action_code(plugin, code);
+            DeckPluginPrivate *new_priv = deck_plugin_get_instance_private(new_plugin);
+            printf("  Loading private data\n");
+            new_priv->action->load(new_plugin, group, key_file);
+            return new_plugin;
         }
         list = list->next;
     }
