@@ -2,6 +2,7 @@
 
 void test_config_widget(DeckPlugin *plugin, GtkBox *parent);
 DeckPlugin *test_clone(DeckPlugin *plugin, int action);
+DeckPlugin *test_clone_with_code(DeckPlugin *plugin, int code);
 void set_surface(TestPlugin *self);
 void test_exec(DeckPlugin *plugin);
 
@@ -52,16 +53,28 @@ static void test_plugin_class_init(TestPluginClass *klass) {
     /* implement pure virtual function. */
     deck_plugin_klass->info = test_info;
     deck_plugin_klass->clone = test_clone;
+    deck_plugin_klass->clone_with_code = test_clone_with_code;
 
     GObjectClass *object_class = G_OBJECT_CLASS(klass);
 
     object_class->finalize = test_plugin_finalize;
 }
 
-DeckPlugin *test_plugin_new() { return g_object_new(TEST_TYPE_PLUGIN, NULL); }
+DeckPlugin *test_plugin_new() { return g_object_new(TEST_TYPE_PLUGIN, "name", "TestPlugin", NULL); }
 
 DeckPlugin *test_clone(DeckPlugin *self, int action) {
-    return g_object_new(TEST_TYPE_PLUGIN, "action", &TEST_PLUGIN_INFO.actions[action], NULL);
+    return g_object_new(TEST_TYPE_PLUGIN, "name", "TestPlugin", "action",
+                        &TEST_PLUGIN_INFO.actions[action], NULL);
+}
+
+DeckPlugin *test_clone_with_code(DeckPlugin *self, int code) {
+    for (int i = 0; i < N_ACTIONS; i++) {
+        if (code == TEST_PLUGIN_INFO.actions[i].code) {
+            return test_clone(self, i);
+        }
+    }
+
+    return NULL;
 }
 
 void on_color_selected(GtkColorButton *widget, gpointer user_data) {

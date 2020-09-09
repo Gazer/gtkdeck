@@ -4,6 +4,7 @@
 #include "text.h"
 
 DeckPlugin *system_plugin_clone(DeckPlugin *self, int action);
+DeckPlugin *system_plugin_clone_with_code(DeckPlugin *self, int code);
 DeckPluginInfo *system_plugin_info(DeckPlugin *self);
 
 typedef struct _SystemPluginPrivate {
@@ -92,6 +93,7 @@ static void system_plugin_class_init(SystemPluginClass *klass) {
     /* implement pure virtual function. */
     deck_plugin_klass->info = system_plugin_info;
     deck_plugin_klass->clone = system_plugin_clone;
+    deck_plugin_klass->clone_with_code = system_plugin_clone_with_code;
 
     GObjectClass *object_class = G_OBJECT_CLASS(klass);
     object_class->set_property = system_plugin_set_property;
@@ -104,10 +106,24 @@ static void system_plugin_class_init(SystemPluginClass *klass) {
     g_object_class_install_properties(object_class, N_PROPERTIES, obj_properties);
 }
 
-DeckPlugin *system_plugin_new() { return g_object_new(SYSTEM_TYPE_PLUGIN, NULL); }
+DeckPlugin *system_plugin_new() {
+    return g_object_new(SYSTEM_TYPE_PLUGIN, "name", "SystemPlugin", NULL);
+}
 
 DeckPlugin *system_plugin_clone(DeckPlugin *self, int action) {
-    return g_object_new(SYSTEM_TYPE_PLUGIN, "action", &SYSTEM_PLUGIN_INFO.actions[action], NULL);
+    return g_object_new(SYSTEM_TYPE_PLUGIN, "name", "SystemPlugin", "action",
+                        &SYSTEM_PLUGIN_INFO.actions[action], NULL);
 }
 
 DeckPluginInfo *system_plugin_info(DeckPlugin *self) { return &SYSTEM_PLUGIN_INFO; }
+
+DeckPlugin *system_plugin_clone_with_code(DeckPlugin *self, int code) {
+    for (int i = 0; i < N_ACTIONS; i++) {
+        if (code == SYSTEM_PLUGIN_INFO.actions[i].code) {
+            printf("  FOUND ACTION %i\n", i);
+            return system_plugin_clone(self, i);
+        }
+    }
+
+    return NULL;
+}

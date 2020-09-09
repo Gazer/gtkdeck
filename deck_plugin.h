@@ -35,8 +35,10 @@ struct _DeckPluginClass {
     /* class members */
     DeckPluginInfo *(*info)(DeckPlugin *self);
     DeckPlugin *(*clone)(DeckPlugin *self, int action);
+    DeckPlugin *(*clone_with_code)(DeckPlugin *self, int code);
     void (*config_widget)(DeckPlugin *self, GtkBox *parent);
     void (*exec)(DeckPlugin *self);
+    void (*save)(DeckPlugin *self, int position, GKeyFile *key_file);
 
     GThreadPool *pool;
 
@@ -52,7 +54,10 @@ GType deck_plugin_get_type();
 GList *deck_plugin_list();
 void deck_plugin_exit();
 void deck_plugin_register(DeckPlugin *plugin);
+void deck_plugin_save(DeckPlugin *self, int position, GKeyFile *key_file);
+DeckPlugin *deck_plugin_load(GKeyFile *key_file, const char *group);
 DeckPlugin *deck_plugin_new_with_action(DeckPlugin *self, int action);
+DeckPlugin *deck_plugin_new_with_action_code(DeckPlugin *self, int code);
 DeckPluginInfo *deck_plugin_get_info(DeckPlugin *self);
 void deck_plugin_get_config_widget(DeckPlugin *self, GtkBox *parent);
 void deck_plugin_exec(DeckPlugin *self);

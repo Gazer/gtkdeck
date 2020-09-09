@@ -4,6 +4,8 @@
 #include <gtk/gtk.h>
 #include <unistd.h>
 
+void save_config(StreamDeck *deck);
+
 GList *plugin_list = NULL;
 GtkBox *config_row;
 
@@ -15,6 +17,9 @@ struct DATA {
     DeckPlugin *plugin;
     int action;
 };
+
+void on_drag_data_received(GtkWidget *wgt, GdkDragContext *context, int x, int y,
+                           GtkSelectionData *sdata, guint info, guint time, gpointer userdata);
 
 void on_drag_data_get(GtkWidget *widget, GdkDragContext *drag_context, GtkSelectionData *sdata,
                       guint info, guint time, gpointer user_data) {
@@ -193,6 +198,28 @@ void on_deck_key_changed(GObject *gobject, int key, gpointer user_data) {
     }
 }
 
+void add_plugin_button(GtkGrid *grid, int key, StreamDeck *deck, DeckPlugin *plugin, int left,
+                       int top) {
+    GtkWidget *box = gtk_button_new();
+    g_object_set_data(G_OBJECT(plugin), "key", GINT_TO_POINTER(key));
+
+    GtkWidget *widget = grid_button(key);
+
+    // If plugin updates, send the new image to the device
+    g_signal_connect(plugin, "notify::preview", G_CALLBACK(on_deck_preview_update_device), deck);
+    g_signal_connect(plugin, "notify::preview", G_CALLBACK(on_deck_preview_update_app), widget);
+
+    gtk_drag_dest_set(box, GTK_DEST_DEFAULT_ALL, entries, 1, GDK_ACTION_COPY);
+    g_signal_connect(box, "drag-data-received", G_CALLBACK(on_drag_data_received), grid);
+    g_object_set_data(G_OBJECT(box), "plugin", plugin);
+    g_signal_connect(box, "clicked", G_CALLBACK(show_config), deck);
+
+    gtk_container_add(GTK_CONTAINER(box), widget);
+
+    gtk_grid_attach(grid, box, left, top, 1, 1);
+    gtk_widget_show_all(box);
+}
+
 void on_drag_data_received(GtkWidget *wgt, GdkDragContext *context, int x, int y,
                            GtkSelectionData *sdata, guint info, guint time, gpointer userdata) {
     GtkGrid *grid = GTK_GRID(userdata);
@@ -213,34 +240,16 @@ void on_drag_data_received(GtkWidget *wgt, GdkDragContext *context, int x, int y
                     g_object_unref(G_OBJECT(BUTTON_ACTION[key]));
                 }
 
-                GtkWidget *box = gtk_button_new();
-
                 DeckPlugin *plugin = deck_plugin_new_with_action(data->plugin, data->action);
-                g_object_set_data(G_OBJECT(plugin), "key", GINT_TO_POINTER(key));
+                BUTTON_ACTION[key] = plugin;
 
                 gtk_widget_destroy(cell);
-                BUTTON_ACTION[key] = plugin;
-                GtkWidget *widget = grid_button(key);
-
-                // If plugin updates, send the new image to the device
-                g_signal_connect(plugin, "notify::preview",
-                                 G_CALLBACK(on_deck_preview_update_device), deck);
-                g_signal_connect(plugin, "notify::preview", G_CALLBACK(on_deck_preview_update_app),
-                                 widget);
-
-                gtk_drag_dest_set(box, GTK_DEST_DEFAULT_ALL, entries, 1, GDK_ACTION_COPY);
-                g_signal_connect(box, "drag-data-received", G_CALLBACK(on_drag_data_received),
-                                 grid);
-                g_object_set_data(G_OBJECT(box), "plugin", plugin);
-                g_signal_connect(box, "clicked", G_CALLBACK(show_config), deck);
-
-                gtk_container_add(GTK_CONTAINER(box), widget);
-
-                gtk_grid_attach(grid, box, left, top, 1, 1);
-                gtk_widget_show_all(box);
+                add_plugin_button(grid, key, deck, plugin, left, top);
             }
         }
     }
+
+    save_config(deck);
 
     g_free(data);
 }
@@ -252,15 +261,9 @@ void init_button_grid(GtkGrid *grid, StreamDeck *deck) {
 
     for (int top = 0; top < 3; top++) {
         for (int left = 0; left < 5; left++) {
-            GtkWidget *widget;
+            int key = left + 5 * top;
 
-            widget = grid_button(left + 5 * top);
-
-            gtk_drag_dest_set(widget, GTK_DEST_DEFAULT_ALL, entries, 1, GDK_ACTION_COPY);
-            // g_signal_connect(widget, "drag-drop", G_CALLBACK(on_plugin_drop), NULL);
-            g_signal_connect(widget, "drag-data-received", G_CALLBACK(on_drag_data_received), grid);
-
-            gtk_grid_attach(grid, widget, left, top, 1, 1);
+            add_plugin_button(grid, key, deck, BUTTON_ACTION[key], left, top);
         }
     }
 }
@@ -275,6 +278,59 @@ static void init_device_info(GtkBuilder *builder, StreamDeck *deck) {
     gtk_label_set_text(label, g_string_free(text, FALSE));
 }
 
+// TODO: Use device serial number tu read config of this device
+void read_config(StreamDeck *deck) {
+    const gchar *config_dir = g_get_user_config_dir();
+    g_autoptr(GKeyFile) keys = g_key_file_new();
+    GString *serial_number = stream_deck_get_serial_number(deck);
+
+    g_autofree char *filename;
+    filename = g_strdup_printf("%s/keys_%s.ini", config_dir, serial_number->str);
+
+    printf("Loading from ... %s\n", filename);
+
+    if (g_key_file_load_from_file(keys, filename, 0, NULL)) {
+        gsize ngroups;
+        gchar **groups = g_key_file_get_groups(keys, &ngroups);
+
+        for (int i = 0; i < ngroups; i++) {
+            printf("Loading key config %s\n", groups[i]);
+            gchar **tokens = g_strsplit(groups[i], "_", 2);
+            int button_index = atoi(tokens[1]);
+
+            printf("  Got button index %d\n", button_index);
+
+            BUTTON_ACTION[button_index] = deck_plugin_load(keys, groups[i]);
+
+            g_strfreev(tokens);
+        }
+
+        g_strfreev(groups);
+    }
+}
+
+void save_config(StreamDeck *deck) {
+    const gchar *config_dir = g_get_user_config_dir();
+    g_autoptr(GKeyFile) keys = g_key_file_new();
+    GString *serial_number = stream_deck_get_serial_number(deck);
+
+    g_autofree char *filename;
+    filename = g_strdup_printf("%s/keys_%s.ini", config_dir, serial_number->str);
+
+    printf("Saving ... %s\n", filename);
+
+    for (int i = 0; i < 15; i++) {
+        if (BUTTON_ACTION[i] != NULL) {
+            deck_plugin_save(BUTTON_ACTION[i], i, keys);
+        }
+    }
+
+    // TODO: Handle errors
+    g_key_file_save_to_file(keys, filename, NULL);
+
+    g_string_free(serial_number, TRUE);
+}
+
 static void activate(GtkApplication *app, gpointer user_data) {
     GtkBuilder *builder;
     GtkWidget *window;
@@ -284,6 +340,7 @@ static void activate(GtkApplication *app, gpointer user_data) {
     GList *devices = (GList *)user_data;
 
     StreamDeck *device = STREAM_DECK(devices->data);
+    read_config(device);
 
     // Load and init plugins
     plugin_list = deck_plugin_list();
