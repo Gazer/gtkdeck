@@ -207,6 +207,7 @@ GList *stream_deck_list() {
     hid_device *handle;
     GList *device_list = NULL;
     StreamDeck *deck;
+    struct hid_device_info *info, *iter;
 
     res = hid_init();
     if (res < 0) {
@@ -214,11 +215,37 @@ GList *stream_deck_list() {
         return NULL;
     }
 
-    handle = hid_open(0x0fd9, 0x006d, NULL);
-    // hid_set_nonblocking(handle, 1);
-    deck = g_object_new(STREAM_TYPE_DECK, "device", handle, "type", STREAM_DECK_ORIGINAL_V2, NULL);
+    info = hid_enumerate(0x0fd9, 0);
+    iter = info;
+    while (iter != NULL) {
+        int type = -1;
+        handle = hid_open(iter->vendor_id, iter->product_id, NULL);
 
-    device_list = g_list_append(device_list, deck);
+        switch (iter->product_id) {
+        // case 0x0060:
+        //     type = STREAM_DECK_ORIGINAL;
+        //     break;
+        case 0x006d:
+            type = STREAM_DECK_ORIGINAL_V2;
+            break;
+        case 0x0063:
+            type = STREAM_DECK_MINI;
+            break;
+        // case 0x006c:
+        //     type = STREAM_DECK_XL;
+        //     break;
+        default:
+            printf("Device not yet supported\n");
+        }
+        if (type != -1) {
+            deck = g_object_new(STREAM_TYPE_DECK, "device", handle, "type", type, NULL);
+
+            device_list = g_list_append(device_list, deck);
+        }
+        iter = iter->next;
+    }
+
+    hid_free_enumeration(info);
 
     return device_list;
 }
