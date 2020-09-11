@@ -211,6 +211,8 @@ void add_plugin_button(GtkGrid *grid, int key, StreamDeck *deck, DeckPlugin *plu
         g_signal_connect(plugin, "notify::preview", G_CALLBACK(on_deck_preview_update_app), widget);
         g_object_set_data(G_OBJECT(box), "plugin", plugin);
         g_signal_connect(box, "clicked", G_CALLBACK(show_config), deck);
+
+        on_deck_preview_update_device(G_OBJECT(plugin), NULL, deck);
     }
 
     gtk_drag_dest_set(box, GTK_DEST_DEFAULT_ALL, entries, 1, GDK_ACTION_COPY);
@@ -264,7 +266,6 @@ void init_button_grid(GtkGrid *grid, StreamDeck *deck) {
     for (int top = 0; top < 3; top++) {
         for (int left = 0; left < 5; left++) {
             int key = left + 5 * top;
-
             add_plugin_button(grid, key, deck, BUTTON_ACTION[key], left, top);
         }
     }

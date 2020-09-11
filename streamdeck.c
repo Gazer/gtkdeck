@@ -145,7 +145,8 @@ gpointer read_key_states(gpointer data) {
 
 // https://github.com/libusb/hidapi/blob/ca1a2d6efae8d372587f4c13f60632916681d408/libusb/hid.c
 static void stream_deck_constructed(GObject *object) {
-    StreamDeckPrivate *priv = stream_deck_get_instance_private(STREAM_DECK(object));
+    StreamDeck *deck = STREAM_DECK(object);
+    StreamDeckPrivate *priv = stream_deck_get_instance_private(deck);
 
     priv->num_keys = priv->rows * priv->columns;
     priv->icon_bytes = priv->icon_size * priv->icon_size * 3;
@@ -216,7 +217,6 @@ GList *stream_deck_list() {
     handle = hid_open(0x0fd9, 0x006d, NULL);
     // hid_set_nonblocking(handle, 1);
     deck = g_object_new(STREAM_TYPE_DECK, "device", handle, "type", STREAM_DECK_ORIGINAL_V2, NULL);
-    stream_deck_init_original_v2(deck);
 
     device_list = g_list_append(device_list, deck);
 
@@ -423,6 +423,10 @@ void stream_deck_init_original_v2(StreamDeck *deck) {
     priv->get_firmware_version = original_v2_get_firmware_version;
     priv->get_serial_number = original_v2_get_serial_number;
     priv->write_image_header = original_v2_write_image_header;
+
+    g_autofree char *payload = g_malloc0(priv->max_packet_size);
+    payload[0] = 0x02;
+    hid_write(priv->handle, payload, priv->max_packet_size);
 }
 
 // MINI SPECIFIC FUNCTIONS

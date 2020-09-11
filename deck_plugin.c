@@ -202,7 +202,7 @@ cairo_surface_t *deck_plugin_get_surface(DeckPlugin *self) {
 
 void deck_plugin_set_preview_from_file(DeckPlugin *self, char *filename) {
     DeckPluginPrivate *priv = deck_plugin_get_instance_private(self);
-    GdkPixbuf *pixbuf = gdk_pixbuf_new_from_file_at_scale(filename, 72, 72, TRUE, NULL);
+    GdkPixbuf *pixbuf = gdk_pixbuf_new_from_file_at_scale(filename, 72, 72, FALSE, NULL);
 
     if (priv->preview_image != NULL) {
         cairo_surface_destroy(priv->preview_image);
@@ -218,10 +218,37 @@ void deck_plugin_reset(DeckPlugin *self) {
     g_object_set(G_OBJECT(self), "preview", priv->preview_image, NULL);
 }
 
-char *surface_to_base64(cairo_surface_t *surface) {
+cairo_surface_t *g_key_file_get_surface(GKeyFile *key_file, char *group, char *prefix) {
     unsigned char *data;
     cairo_format_t format;
-    int width, height;
+    int width, height, stride;
+    int data_size;
+
+    g_autofree char *l_data = g_strdup_printf("%s_data", prefix);
+    g_autofree char *l_width = g_strdup_printf("%s_width", prefix);
+    g_autofree char *l_height = g_strdup_printf("%s_height", prefix);
+    g_autofree char *l_stride = g_strdup_printf("%s_stride", prefix);
+    g_autofree char *l_format = g_strdup_printf("%s_format", prefix);
+
+    data = g_key_file_get_value(key_file, group, l_data, NULL);
+    unsigned char *surface = g_base64_decode(data, &data_size);
+    g_free(data);
+
+    height = g_key_file_get_integer(key_file, group, l_height, NULL);
+    stride = g_key_file_get_integer(key_file, group, l_stride, NULL);
+    format = g_key_file_get_integer(key_file, group, l_format, NULL);
+    width = g_key_file_get_integer(key_file, group, l_width, NULL);
+
+    printf("%d\n", data_size);
+    printf("%dx%d - %d (%d)\n", width, height, stride, format);
+    return cairo_image_surface_create_for_data(surface, format, width, height, stride);
+}
+
+void g_key_file_set_surface(GKeyFile *key_file, char *group, char *prefix,
+                            cairo_surface_t *surface) {
+    unsigned char *data;
+    cairo_format_t format;
+    int width, height, stride;
     int data_size;
 
     // flush to ensure all writing to the image was done
@@ -231,6 +258,7 @@ char *surface_to_base64(cairo_surface_t *surface) {
     data = cairo_image_surface_get_data(surface);
     width = cairo_image_surface_get_width(surface);
     height = cairo_image_surface_get_height(surface);
+    stride = cairo_image_surface_get_stride(surface);
     format = cairo_image_surface_get_format(surface);
     data_size = width * height;
 
@@ -245,7 +273,22 @@ char *surface_to_base64(cairo_surface_t *surface) {
         data_size *= 4;
     }
 
-    return g_base64_encode(data, data_size);
+    // Save
+    g_autofree char *l_data = g_strdup_printf("%s_data", prefix);
+    g_autofree char *base64 = g_base64_encode(data, data_size);
+    g_key_file_set_string(key_file, group, l_data, base64);
+
+    g_autofree char *l_width = g_strdup_printf("%s_width", prefix);
+    g_key_file_set_integer(key_file, group, l_width, width);
+
+    g_autofree char *l_height = g_strdup_printf("%s_height", prefix);
+    g_key_file_set_integer(key_file, group, l_height, height);
+
+    g_autofree char *l_stride = g_strdup_printf("%s_stride", prefix);
+    g_key_file_set_integer(key_file, group, l_stride, stride);
+
+    g_autofree char *l_format = g_strdup_printf("%s_format", prefix);
+    g_key_file_set_integer(key_file, group, l_format, format);
 }
 
 void deck_plugin_save(DeckPlugin *self, int position, GKeyFile *key_file) {
@@ -259,8 +302,8 @@ void deck_plugin_save(DeckPlugin *self, int position, GKeyFile *key_file) {
     g_key_file_set_integer(key_file, group, "code", priv->action->code);
 
     if (priv->preview_image != NULL) {
-        g_autofree char *preview_image = surface_to_base64(priv->preview_image);
-        g_key_file_set_string(key_file, group, "preview_image", preview_image);
+        printf("Saving image for %s\n", group);
+        g_key_file_set_surface(key_file, group, "preview_image", priv->preview_image);
     }
 
     priv->action->save(self, group, key_file);
@@ -286,8 +329,14 @@ DeckPlugin *deck_plugin_load(GKeyFile *key_file, const char *group) {
 
             DeckPlugin *new_plugin = deck_plugin_new_with_action_code(plugin, code);
             DeckPluginPrivate *new_priv = deck_plugin_get_instance_private(new_plugin);
+
+            if (g_key_file_has_key(key_file, group, "preview_image_data", NULL)) {
+                new_priv->preview_image = g_key_file_get_surface(key_file, group, "preview_image");
+            }
             printf("  Loading private data\n");
             new_priv->action->load(new_plugin, group, key_file);
+
+            deck_plugin_reset(new_plugin);
             return new_plugin;
         }
         list = list->next;
