@@ -31,13 +31,28 @@ void text_exec(DeckPlugin *self) {
 
     g_object_get(G_OBJECT(self), "url", &url, NULL);
 
-    char *command = g_strdup_printf("xvkbd -xsendevent -text \"%s\"", url);
+    char *command = g_strdup_printf("xvkbd -text \"%s\"", url);
     // TODO
     g_spawn_command_line_sync(command, NULL, NULL, &exit_status, NULL);
 
     g_free(command);
+    g_free(url);
 }
 
-void text_save(DeckPlugin *self, char *group, GKeyFile *key_file) {}
+void text_save(DeckPlugin *self, char *group, GKeyFile *key_file) {
+    gchar *url;
+    g_object_get(G_OBJECT(self), "url", &url, NULL);
 
-void text_load(DeckPlugin *self, char *group, GKeyFile *key_file) {}
+    if (url != NULL) {
+        g_key_file_set_string(key_file, group, "text", url);
+        g_free(url);
+    }
+}
+
+void text_load(DeckPlugin *self, char *group, GKeyFile *key_file) {
+    g_autofree char *url = g_key_file_get_string(key_file, group, "text", NULL);
+
+    if (url != NULL) {
+        g_object_set(G_OBJECT(self), "url", url, NULL);
+    }
+}

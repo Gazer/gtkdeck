@@ -33,8 +33,24 @@ void website_exec(DeckPlugin *self) {
     if (g_app_info_launch_default_for_uri(url, NULL, NULL)) {
         printf("Open web url: %s\n", url);
     }
+
+    g_free(url);
 }
 
-void website_save(DeckPlugin *self, char *group, GKeyFile *key_file) {}
+void website_save(DeckPlugin *self, char *group, GKeyFile *key_file) {
+    gchar *url;
+    g_object_get(G_OBJECT(self), "url", &url, NULL);
 
-void website_load(DeckPlugin *self, char *group, GKeyFile *key_file) {}
+    if (url != NULL) {
+        g_key_file_set_string(key_file, group, "url", url);
+        g_free(url);
+    }
+}
+
+void website_load(DeckPlugin *self, char *group, GKeyFile *key_file) {
+    g_autofree char *url = g_key_file_get_string(key_file, group, "url", NULL);
+
+    if (url != NULL) {
+        g_object_set(G_OBJECT(self), "url", url, NULL);
+    }
+}

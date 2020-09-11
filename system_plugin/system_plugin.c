@@ -26,7 +26,7 @@ DeckPluginInfo SYSTEM_PLUGIN_INFO = {
     N_ACTIONS,
     {
         {"Website", WEBSITE, website_config, website_exec, website_save, website_load},
-        {"Text", TEXT, text_config, text_exec, text_save, website_load},
+        {"Text", TEXT, text_config, text_exec, text_save, text_load},
         NULL
         // {"Always Red", RED_BUTTON, test_1_config, test_1_exec},
     },
