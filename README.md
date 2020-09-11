@@ -29,9 +29,7 @@ A dummy plugin to test the code. You can set a color and when you click the butt
 
 ## How to install
 
-### USB Description
-
-### Linux
+### udev setup
 
 On linux, the udev subsystem blocks access to the StreamDeck without some special configuration.
 Save the following to `/etc/udev/rules.d/50-elgato.rules` and reload the rules with `sudo udevadm control --reload-rules`
