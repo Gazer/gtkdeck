@@ -323,7 +323,7 @@ void deck_plugin_save(DeckPlugin *self, int position, GKeyFile *key_file) {
     priv->action->save(self, group, key_file);
 }
 
-DeckPlugin *deck_plugin_load(GKeyFile *key_file, const char *group) {
+DeckPlugin *deck_plugin_load(GKeyFile *key_file, char *group) {
     GList *list = deck_plugin_list();
 
     g_autofree char *name = g_key_file_get_string(key_file, group, "name", NULL);

@@ -56,7 +56,7 @@ GList *deck_plugin_list();
 void deck_plugin_exit();
 void deck_plugin_register(DeckPlugin *plugin);
 void deck_plugin_save(DeckPlugin *self, int position, GKeyFile *key_file);
-DeckPlugin *deck_plugin_load(GKeyFile *key_file, const char *group);
+DeckPlugin *deck_plugin_load(GKeyFile *key_file, char *group);
 DeckPlugin *deck_plugin_new_with_action(DeckPlugin *self, int action);
 DeckPlugin *deck_plugin_new_with_action_code(DeckPlugin *self, int code);
 DeckPluginInfo *deck_plugin_get_info(DeckPlugin *self);

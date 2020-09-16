@@ -16,6 +16,9 @@ gtkdeps = [
 plugins = [
     static_library('system_plugin',
       files(['system_plugin/system_plugin.c', 'system_plugin/website.c', 'system_plugin/text.c']),
+      dependencies : gtkdeps),
+  static_library('streamdeck',
+      files(['streamdeck/streamdeck.c']),
       dependencies : gtkdeps)
 ]
 
@@ -26,10 +29,11 @@ resource_data = files(
 
 main_files = files([
     'deck_plugin.c',
-    'gtkdeck.c',
-    'streamdeck.c',
+    'ui/gtkdeck.c',
     'test_plugin.c',
 ])
+
+main_includes = include_directories('streamdeck')
 
 main_files += gnome.compile_resources(
   'gtkdeck-resources',
@@ -40,4 +44,4 @@ main_files += gnome.compile_resources(
   export: true,
 )
 
-executable('gtkdeck', main_files, dependencies : gtkdeps, link_with : plugins)
+executable('gtkdeck', main_files, include_directories: main_includes, dependencies : gtkdeps, link_with : plugins)

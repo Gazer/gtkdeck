@@ -219,7 +219,6 @@ void add_plugin_button(GtkGrid *grid, int key, StreamDeck *deck, DeckPlugin *plu
     g_signal_connect(box, "drag-data-received", G_CALLBACK(on_drag_data_received), grid);
 
     gtk_widget_set_size_request(widget, 72, 72);
-    gtk_window_set_default_size(widget, 72, 72);
 
     gtk_container_add(GTK_CONTAINER(box), widget);
 
@@ -233,8 +232,8 @@ void on_drag_data_received(GtkWidget *wgt, GdkDragContext *context, int x, int y
     GtkGrid *grid = GTK_GRID(userdata);
     StreamDeck *deck = STREAM_DECK(g_object_get_data(G_OBJECT(grid), "deck"));
 
-    rows = g_object_get_data(G_OBJECT(grid), "rows");
-    columns = g_object_get_data(G_OBJECT(grid), "columns");
+    rows = GPOINTER_TO_UINT(g_object_get_data(G_OBJECT(grid), "rows"));
+    columns = GPOINTER_TO_UINT(g_object_get_data(G_OBJECT(grid), "columns"));
 
     struct DATA *data = NULL;
     const guchar *my_data = gtk_selection_data_get_data(sdata);
@@ -268,8 +267,8 @@ void on_drag_data_received(GtkWidget *wgt, GdkDragContext *context, int x, int y
 void init_button_grid(GtkGrid *grid, StreamDeck *deck) {
     int rows, columns;
     g_object_set_data(G_OBJECT(grid), "deck", deck);
-    rows = g_object_get_data(G_OBJECT(grid), "rows");
-    columns = g_object_get_data(G_OBJECT(grid), "columns");
+    rows = GPOINTER_TO_UINT(g_object_get_data(G_OBJECT(grid), "rows"));
+    columns = GPOINTER_TO_UINT(g_object_get_data(G_OBJECT(grid), "columns"));
 
     g_signal_connect(deck, "key_pressed", G_CALLBACK(on_deck_key_changed), NULL);
 
@@ -378,8 +377,8 @@ static void activate(GtkApplication *app, gpointer user_data) {
     init_plugin_tree(plugin_tree);
 
     button_grid = GTK_GRID(gtk_builder_get_object(builder, "button_grid"));
-    g_object_set_data(G_OBJECT(button_grid), "rows", rows);
-    g_object_set_data(G_OBJECT(button_grid), "columns", columns);
+    g_object_set_data(G_OBJECT(button_grid), "rows", GINT_TO_POINTER(rows));
+    g_object_set_data(G_OBJECT(button_grid), "columns", GINT_TO_POINTER(columns));
     init_button_grid(button_grid, device);
 
     g_object_unref(builder);
