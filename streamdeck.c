@@ -48,7 +48,7 @@ typedef struct _StreamDeckPrivate {
 
 G_DEFINE_TYPE_WITH_PRIVATE(StreamDeck, stream_deck, G_TYPE_OBJECT)
 
-typedef enum { DEVICE = 1, TYPE, KEY_STATES, N_PROPERTIES } StreamDeckProperty;
+typedef enum { DEVICE = 1, TYPE, KEY_STATES, ROWS, COLUMNS, N_PROPERTIES } StreamDeckProperty;
 
 static GParamSpec *obj_properties[N_PROPERTIES] = {
     NULL,
@@ -89,14 +89,22 @@ static void stream_deck_set_property(GObject *object, guint property_id, const G
 
 static void stream_deck_get_property(GObject *object, guint property_id, GValue *value,
                                      GParamSpec *pspec) {
-    // StreamDeck *self = STREAM_DECK(object);
-    // StreamDeckPrivate *priv = stream_deck_get_instance_private(self);
+    StreamDeck *self = STREAM_DECK(object);
+    StreamDeckPrivate *priv = stream_deck_get_instance_private(self);
 
     switch ((StreamDeckProperty)property_id) {
     case DEVICE:
         // g_value_set(value, priv->device);
         // priv->device = value;
         break;
+    case ROWS: {
+        g_value_set_int(value, priv->rows);
+        break;
+    }
+    case COLUMNS: {
+        g_value_set_int(value, priv->columns);
+        break;
+    }
 
     default:
         /* We don't have any other property... */
@@ -196,6 +204,12 @@ static void stream_deck_class_init(StreamDeckClass *klass) {
 
     obj_properties[TYPE] = g_param_spec_int("type", "Device type", "Device type.", 1, 4, 1,
                                             G_PARAM_CONSTRUCT_ONLY | G_PARAM_READWRITE);
+
+    obj_properties[ROWS] =
+        g_param_spec_int("rows", "Rows", "Rows of the device.", 0, 100, 0, G_PARAM_READABLE);
+
+    obj_properties[COLUMNS] = g_param_spec_int("columns", "Columns", "Columns of the device.", 0,
+                                               100, 0, G_PARAM_READABLE);
 
     g_object_class_install_properties(object_class, N_PROPERTIES, obj_properties);
 }

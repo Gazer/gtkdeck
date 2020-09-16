@@ -9,7 +9,7 @@ void save_config(StreamDeck *deck);
 GList *plugin_list = NULL;
 GtkBox *config_row;
 
-DeckPlugin *BUTTON_ACTION[15] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+DeckPlugin **BUTTON_ACTION;
 
 static GtkTargetEntry entries[] = {{"text/plain", GTK_TARGET_SAME_APP, 0}};
 
@@ -218,6 +218,9 @@ void add_plugin_button(GtkGrid *grid, int key, StreamDeck *deck, DeckPlugin *plu
     gtk_drag_dest_set(box, GTK_DEST_DEFAULT_ALL, entries, 1, GDK_ACTION_COPY);
     g_signal_connect(box, "drag-data-received", G_CALLBACK(on_drag_data_received), grid);
 
+    gtk_widget_set_size_request(widget, 72, 72);
+    gtk_window_set_default_size(widget, 72, 72);
+
     gtk_container_add(GTK_CONTAINER(box), widget);
 
     gtk_grid_attach(grid, box, left, top, 1, 1);
@@ -226,19 +229,23 @@ void add_plugin_button(GtkGrid *grid, int key, StreamDeck *deck, DeckPlugin *plu
 
 void on_drag_data_received(GtkWidget *wgt, GdkDragContext *context, int x, int y,
                            GtkSelectionData *sdata, guint info, guint time, gpointer userdata) {
+    int rows, columns;
     GtkGrid *grid = GTK_GRID(userdata);
     StreamDeck *deck = STREAM_DECK(g_object_get_data(G_OBJECT(grid), "deck"));
+
+    rows = g_object_get_data(G_OBJECT(grid), "rows");
+    columns = g_object_get_data(G_OBJECT(grid), "columns");
 
     struct DATA *data = NULL;
     const guchar *my_data = gtk_selection_data_get_data(sdata);
     memcpy(&data, my_data, sizeof(data));
 
-    for (int top = 0; top < 3; top++) {
-        for (int left = 0; left < 5; left++) {
+    for (int top = 0; top < rows; top++) {
+        for (int left = 0; left < columns; left++) {
             GtkWidget *cell = gtk_grid_get_child_at(grid, left, top);
 
             if (cell == wgt) {
-                int key = left + 5 * top;
+                int key = left + columns * top;
 
                 if (BUTTON_ACTION[key] != NULL) {
                     g_object_unref(G_OBJECT(BUTTON_ACTION[key]));
@@ -259,13 +266,16 @@ void on_drag_data_received(GtkWidget *wgt, GdkDragContext *context, int x, int y
 }
 
 void init_button_grid(GtkGrid *grid, StreamDeck *deck) {
+    int rows, columns;
     g_object_set_data(G_OBJECT(grid), "deck", deck);
+    rows = g_object_get_data(G_OBJECT(grid), "rows");
+    columns = g_object_get_data(G_OBJECT(grid), "columns");
 
     g_signal_connect(deck, "key_pressed", G_CALLBACK(on_deck_key_changed), NULL);
 
-    for (int top = 0; top < 3; top++) {
-        for (int left = 0; left < 5; left++) {
-            int key = left + 5 * top;
+    for (int top = 0; top < rows; top++) {
+        for (int left = 0; left < columns; left++) {
+            int key = left + columns * top;
             add_plugin_button(grid, key, deck, BUTTON_ACTION[key], left, top);
         }
     }
@@ -341,8 +351,13 @@ static void activate(GtkApplication *app, gpointer user_data) {
     GtkGrid *button_grid;
     GObject *o;
     GList *devices = (GList *)user_data;
+    int rows, columns;
 
     StreamDeck *device = STREAM_DECK(devices->data);
+
+    g_object_get(G_OBJECT(device), "rows", &rows, "columns", &columns, NULL);
+    BUTTON_ACTION = g_new0(DeckPlugin *, rows * columns);
+
     read_config(device);
 
     // Load and init plugins
@@ -363,6 +378,8 @@ static void activate(GtkApplication *app, gpointer user_data) {
     init_plugin_tree(plugin_tree);
 
     button_grid = GTK_GRID(gtk_builder_get_object(builder, "button_grid"));
+    g_object_set_data(G_OBJECT(button_grid), "rows", rows);
+    g_object_set_data(G_OBJECT(button_grid), "columns", columns);
     init_button_grid(button_grid, device);
 
     g_object_unref(builder);
@@ -393,6 +410,8 @@ int main(int argc, char **argv) {
 
     stream_deck_free(devices);
     deck_plugin_exit();
+
+    g_free(BUTTON_ACTION);
 
     g_object_unref(app);
 

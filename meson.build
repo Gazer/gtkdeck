@@ -4,6 +4,7 @@ gnome = import('gnome')
 
 source_root = meson.current_source_dir()
 data_dir = join_paths(source_root, '.')
+assets_dir = join_paths(source_root, 'assets')
 
 gtkdeps = [
     dependency('gtk+-3.0'),
@@ -19,7 +20,8 @@ plugins = [
 ]
 
 resource_data = files(
-  'main.glade',
+  'assets/main.glade',
+  'assets/generic_icon.png'
 )
 
 main_files = files([
@@ -32,7 +34,7 @@ main_files = files([
 main_files += gnome.compile_resources(
   'gtkdeck-resources',
   'gtkdeck.gresource.xml',
-  source_dir: data_dir,
+  source_dir: assets_dir,
   c_name: 'gtkdeck',
   dependencies: resource_data,
   export: true,

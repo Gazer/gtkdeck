@@ -94,12 +94,26 @@ static void deck_plugin_finalize(GObject *object) {
     printf("Pluging finalized\n");
 }
 
+static void deck_plugin_constructed(GObject *object) {
+    DeckPlugin *self = DECK_PLUGIN(object);
+    DeckPluginPrivate *priv = deck_plugin_get_instance_private(self);
+
+    // GdkPixbuf *pixbuf = gdk_pixbuf_new_from_resource("/ar/com/p39/gtkdeck/generic_icon.png",
+    // NULL); if (pixbuf != NULL) {
+    //     printf("yea\n");
+    //     priv->preview_image = gdk_cairo_surface_create_from_pixbuf(pixbuf, 0, NULL);
+    //     g_object_unref(pixbuf);
+    // } else {
+    //     printf("bu\n");
+    // }
+}
+
 static void deck_plugin_class_init(DeckPluginClass *klass) {
     GObjectClass *object_class = G_OBJECT_CLASS(klass);
 
     object_class->set_property = deck_plugin_set_property;
     object_class->get_property = deck_plugin_get_property;
-    // object_class->constructed = stream_deck_constructed;
+    object_class->constructed = deck_plugin_constructed;
     object_class->finalize = deck_plugin_finalize;
 
     klass->pool = g_thread_pool_new(process_plugin_exec, NULL, 5, TRUE, NULL);
