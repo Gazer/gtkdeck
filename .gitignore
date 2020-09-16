@@ -2,3 +2,4 @@ gtkdeck
 *~
 .vscode/
 _build/
+builddir/

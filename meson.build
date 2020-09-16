@@ -12,15 +12,10 @@ gtkdeps = [
     dependency('hidapi-libusb'),
 ]
 
-# Maybe use subdir instead
-plugins = [
-    static_library('system_plugin',
-      files(['system_plugin/system_plugin.c', 'system_plugin/website.c', 'system_plugin/text.c']),
-      dependencies : gtkdeps),
-  static_library('streamdeck',
-      files(['streamdeck/streamdeck.c']),
-      dependencies : gtkdeps)
-]
+subdir('streamdeck')
+subdir('plugins')
+
+dependencies = gtkdeps + [streamdeck_dep, deck_plugins_dep]
 
 resource_data = files(
   'assets/main.glade',
@@ -28,9 +23,7 @@ resource_data = files(
 )
 
 main_files = files([
-    'deck_plugin.c',
     'ui/gtkdeck.c',
-    'test_plugin.c',
 ])
 
 main_includes = include_directories('streamdeck')
@@ -44,4 +37,4 @@ main_files += gnome.compile_resources(
   export: true,
 )
 
-executable('gtkdeck', main_files, include_directories: main_includes, dependencies : gtkdeps, link_with : plugins)
+executable('gtkdeck', main_files, include_directories: main_includes, dependencies : dependencies)

@@ -385,9 +385,11 @@ void stream_deck_set_image_from_file(StreamDeck *self, int key, gchar *file) {
 }
 
 void stream_deck_set_image_from_surface(StreamDeck *self, int key, cairo_surface_t *surface) {
-    GdkPixbuf *original = gdk_pixbuf_get_from_surface(surface, 0, 0, 72, 72);
+    if (surface != NULL) {
+        GdkPixbuf *original = gdk_pixbuf_get_from_surface(surface, 0, 0, 72, 72);
 
-    generic_set_image(self, key, original);
+        generic_set_image(self, key, original);
+    }
 }
 
 // Private Initializers
@@ -467,7 +469,7 @@ void stream_deck_init_original_v2(StreamDeck *deck) {
 
     g_autofree char *payload = g_malloc0(priv->max_packet_size);
     payload[0] = 0x02;
-    hid_write(priv->handle, payload, priv->max_packet_size);
+    hid_write(priv->handle, (const unsigned char *)payload, priv->max_packet_size);
 }
 
 // MINI SPECIFIC FUNCTIONS
