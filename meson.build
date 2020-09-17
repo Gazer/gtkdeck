@@ -24,6 +24,7 @@ resource_data = files(
 
 main_files = files([
     'ui/gtkdeck.c',
+    'ui/deck_grid.c'
 ])
 
 main_includes = include_directories('streamdeck')
