@@ -5,10 +5,11 @@
 #include <gtk/gtk.h>
 #include <unistd.h>
 
-void save_config(StreamDeck *deck);
+void save_config(DeckGrid *grid, StreamDeck *deck);
 
 GList *plugin_list = NULL;
 GtkBox *config_row;
+DeckGrid *global_grid;
 
 void on_drag_data_get(GtkWidget *widget, GdkDragContext *drag_context, GtkSelectionData *sdata,
                       guint info, guint time, gpointer user_data) {
@@ -161,60 +162,6 @@ static void init_device_info(GtkBuilder *builder, StreamDeck *deck) {
     gtk_label_set_text(label, g_string_free(text, FALSE));
 }
 
-// TODO: Use device serial number tu read config of this device
-void read_config(StreamDeck *deck, DeckGrid *grid) {
-    const gchar *config_dir = g_get_user_config_dir();
-    g_autoptr(GKeyFile) keys = g_key_file_new();
-    GString *serial_number = stream_deck_get_serial_number(deck);
-
-    g_autofree char *filename;
-    filename = g_strdup_printf("%s/keys_%s.ini", config_dir, serial_number->str);
-
-    printf("Loading from ... %s\n", filename);
-
-    if (g_key_file_load_from_file(keys, filename, 0, NULL)) {
-        gsize ngroups;
-        gchar **groups = g_key_file_get_groups(keys, &ngroups);
-
-        for (int i = 0; i < ngroups; i++) {
-            printf("Loading key config %s\n", groups[i]);
-            gchar **tokens = g_strsplit(groups[i], "_", 2);
-            int button_index = atoi(tokens[1]);
-
-            printf("  Got button index %d\n", button_index);
-
-            DeckPlugin *plugin = deck_plugin_load(keys, groups[i]);
-            deck_grid_set_button(grid, button_index, plugin);
-
-            g_strfreev(tokens);
-        }
-
-        g_strfreev(groups);
-    }
-}
-
-void save_config(StreamDeck *deck) {
-    const gchar *config_dir = g_get_user_config_dir();
-    g_autoptr(GKeyFile) keys = g_key_file_new();
-    GString *serial_number = stream_deck_get_serial_number(deck);
-
-    g_autofree char *filename;
-    filename = g_strdup_printf("%s/keys_%s.ini", config_dir, serial_number->str);
-
-    printf("Saving ... %s\n", filename);
-
-    for (int i = 0; i < 15; i++) {
-        // if (BUTTON_ACTION[i] != NULL) {
-        //     deck_plugin_save(BUTTON_ACTION[i], i, keys);
-        // }
-    }
-
-    // TODO: Handle errors
-    g_key_file_save_to_file(keys, filename, NULL);
-
-    g_string_free(serial_number, TRUE);
-}
-
 static void activate(GtkApplication *app, gpointer user_data) {
     GtkBuilder *builder;
     GtkWidget *window;
@@ -227,7 +174,6 @@ static void activate(GtkApplication *app, gpointer user_data) {
     // Load and init plugins
     plugin_list = deck_plugin_list();
 
-    // builder = gtk_builder_new_from_file("main.glade");
     builder = gtk_builder_new_from_resource("/ar/com/p39/gtkdeck/main.glade");
 
     init_device_info(builder, device);
@@ -243,13 +189,12 @@ static void activate(GtkApplication *app, gpointer user_data) {
 
     GtkWidget *left_panel = GTK_WIDGET(gtk_builder_get_object(builder, "left_side"));
 
-    GtkWidget *grid = deck_grid_new(device);
-    g_signal_connect(grid, "button_pressed", G_CALLBACK(show_config), device);
-    // read_config(device, DECK_GRID(grid));
+    global_grid = deck_grid_new(device);
+    g_signal_connect(global_grid, "button_pressed", G_CALLBACK(show_config), device);
 
-    gtk_box_pack_start(GTK_BOX(left_panel), grid, FALSE, FALSE, 8);
+    gtk_box_pack_start(GTK_BOX(left_panel), global_grid, FALSE, FALSE, 8);
 
-    gtk_widget_show(grid);
+    gtk_widget_show(GTK_WIDGET(global_grid));
 
     g_object_unref(builder);
 
@@ -274,8 +219,6 @@ int main(int argc, char **argv) {
     g_signal_connect(app, "activate", G_CALLBACK(activate), devices);
 
     status = g_application_run(G_APPLICATION(app), argc, argv);
-
-    save_config(devices->data);
 
     stream_deck_free(devices);
     deck_plugin_exit();

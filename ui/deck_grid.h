@@ -40,6 +40,8 @@ GtkWidget *deck_grid_new(StreamDeck *deck);
 
 void deck_grid_set_button(DeckGrid *self, int key, DeckPlugin *plugin);
 
+DeckPlugin *deck_grid_get_button(DeckGrid *self, int key);
+
 G_END_DECLS
 
 #endif /* __DECK_GRID_H__ */

@@ -11,6 +11,8 @@ static void on_deck_preview_update_device(GObject *gobject, GParamSpec *pspec, g
 static void on_deck_preview_update_app(GObject *gobject, GParamSpec *pspec, gpointer user_data);
 static void on_deck_key_pressed(GObject *gobject, int key, gpointer user_data);
 static void button_pressed(GtkButton *button, gpointer data);
+static void read_config(DeckGrid *grid, StreamDeck *deck);
+static void save_config(DeckGrid *grid, StreamDeck *deck);
 
 struct _DeckGridPrivate {
     /* This is the entry defined in the GtkBuilder xml */
@@ -58,6 +60,7 @@ static void deck_grid_constructed(GObject *object) {
                  &(widget->priv->columns), NULL);
 
     widget->priv->actions = g_new0(DeckPlugin *, widget->priv->rows * widget->priv->columns);
+    read_config(widget, widget->priv->deck);
 
     g_signal_connect(G_OBJECT(widget->priv->deck), "key_pressed", G_CALLBACK(on_deck_key_pressed),
                      object);
@@ -71,6 +74,12 @@ static void deck_grid_constructed(GObject *object) {
     }
 }
 
+static void deck_grid_finalize(GObject *object) {
+    DeckGrid *widget = DECK_GRID(object);
+
+    save_config(widget, widget->priv->deck);
+}
+
 static void deck_grid_class_init(DeckGridClass *klass) {
     GType types[1] = {G_TYPE_POINTER};
     GObjectClass *gobject_class;
@@ -82,6 +91,7 @@ static void deck_grid_class_init(DeckGridClass *klass) {
     gobject_class->set_property = deck_grid_set_property;
     gobject_class->get_property = deck_grid_get_property;
     gobject_class->constructed = deck_grid_constructed;
+    gobject_class->finalize = deck_grid_finalize;
 
     deck_grid_signals[0] =
         g_signal_newv("button_pressed", G_TYPE_FROM_CLASS(gobject_class),
@@ -157,10 +167,15 @@ static void button_pressed(GtkButton *button, gpointer data) {
 static void add_plugin_button(DeckGrid *grid, int key, StreamDeck *deck, DeckPlugin *plugin,
                               int left, int top) {
     GtkWidget *box = gtk_button_new();
+    GtkWidget *cell = gtk_grid_get_child_at(GTK_GRID(grid), left, top);
+
+    if (cell != NULL) {
+        gtk_widget_destroy(cell);
+    }
 
     GtkWidget *widget;
     if (plugin == NULL) {
-        widget = gtk_button_new_with_label("X");
+        widget = gtk_label_new("X");
     } else {
         cairo_surface_t *surface = deck_plugin_get_surface(plugin);
         widget = gtk_image_new_from_surface(surface);
@@ -218,13 +233,10 @@ void on_grid_drag_data_received(GtkWidget *wgt, GdkDragContext *context, int x, 
                 DeckPlugin *plugin = deck_plugin_new_with_action(data->plugin, data->action);
                 grid->priv->actions[key] = plugin;
 
-                gtk_widget_destroy(cell);
                 add_plugin_button(grid, key, deck, plugin, left, top);
             }
         }
     }
-
-    // save_config(deck);
 
     g_free(data);
 }
@@ -238,6 +250,60 @@ static void on_deck_key_pressed(GObject *gobject, int key, gpointer user_data) {
     }
 }
 
+static void read_config(DeckGrid *grid, StreamDeck *deck) {
+    const gchar *config_dir = g_get_user_config_dir();
+    g_autoptr(GKeyFile) keys = g_key_file_new();
+    GString *serial_number = stream_deck_get_serial_number(deck);
+
+    g_autofree char *filename;
+    filename = g_strdup_printf("%s/keys_%s.ini", config_dir, serial_number->str);
+
+    printf("Loading from ... %s\n", filename);
+
+    if (g_key_file_load_from_file(keys, filename, 0, NULL)) {
+        gsize ngroups;
+        gchar **groups = g_key_file_get_groups(keys, &ngroups);
+
+        for (int i = 0; i < ngroups; i++) {
+            printf("Loading key config %s\n", groups[i]);
+            gchar **tokens = g_strsplit(groups[i], "_", 2);
+            int button_index = atoi(tokens[1]);
+
+            printf("  Got button index %d\n", button_index);
+
+            DeckPlugin *plugin = deck_plugin_load(keys, groups[i]);
+            deck_grid_set_button(grid, button_index, plugin);
+
+            g_strfreev(tokens);
+        }
+
+        g_strfreev(groups);
+    }
+}
+
+static void save_config(DeckGrid *grid, StreamDeck *deck) {
+    const gchar *config_dir = g_get_user_config_dir();
+    g_autoptr(GKeyFile) keys = g_key_file_new();
+    GString *serial_number = stream_deck_get_serial_number(deck);
+
+    g_autofree char *filename;
+    filename = g_strdup_printf("%s/keys_%s.ini", config_dir, serial_number->str);
+
+    printf("Saving ... %s\n", filename);
+
+    for (int i = 0; i < 15; i++) {
+        DeckPlugin *plugin = deck_grid_get_button(grid, i);
+        if (plugin != NULL) {
+            deck_plugin_save(plugin, i, keys);
+        }
+    }
+
+    // TODO: Handle errors
+    g_key_file_save_to_file(keys, filename, NULL);
+
+    g_string_free(serial_number, TRUE);
+}
+
 /***********************************************************
  *                            API                          *
  ***********************************************************/
@@ -249,4 +315,10 @@ void deck_grid_set_button(DeckGrid *self, int key, DeckPlugin *plugin) {
     g_return_if_fail(DECK_IS_GRID(self));
 
     self->priv->actions[key] = plugin;
+}
+
+DeckPlugin *deck_grid_get_button(DeckGrid *self, int key) {
+    g_return_val_if_fail(DECK_IS_GRID(self), NULL);
+
+    return self->priv->actions[key];
 }

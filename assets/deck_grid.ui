@@ -5,6 +5,8 @@
   <template class="DeckGrid" parent="GtkGrid">
     <property name="visible">True</property>
     <property name="can_focus">False</property>
+    <property name="row_spacing">8</property>
+    <property name="column_spacing">8</property>
     <child>
       <placeholder/>
     </child>
