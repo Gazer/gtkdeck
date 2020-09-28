@@ -17,7 +17,18 @@ G_BEGIN_DECLS
 #define DECK_TYPE_PLUGIN deck_plugin_get_type()
 G_DECLARE_DERIVABLE_TYPE(DeckPlugin, deck_plugin, DECK, PLUGIN, GObject)
 
+typedef enum _DeckPluginButtonMode {
+    BUTTON_MODE_NORMAL,
+    BUTTON_MODE_TOGGLE,
+} DeckPluginButtonMode;
+
+typedef enum _DeckPluginState {
+    BUTTON_STATE_NORMAL,
+    BUTTON_STATE_SELECTED,
+} DeckPluginState;
+
 typedef struct _DeckPluginAction {
+    DeckPluginButtonMode mode;
     gchar *name;
     int code;
     void (*config)(DeckPlugin *self, GtkBox *parent);

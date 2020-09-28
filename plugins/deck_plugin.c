@@ -14,6 +14,8 @@ typedef struct _DeckPluginPrivate {
     char *name;
     cairo_surface_t *surface;
     cairo_surface_t *preview_image;
+    cairo_surface_t *preview_image_active;
+    DeckPluginState state;
 } DeckPluginPrivate;
 
 G_DEFINE_TYPE_WITH_PRIVATE(DeckPlugin, deck_plugin, G_TYPE_OBJECT)
@@ -76,6 +78,8 @@ static void deck_plugin_get_property(GObject *object, guint property_id, GValue 
 static void deck_plugin_init(DeckPlugin *self) {
     DeckPluginPrivate *priv = deck_plugin_get_instance_private(self);
     priv->name = NULL;
+    priv->preview_image = NULL;
+    priv->preview_image_active = NULL;
 }
 
 static void deck_plugin_finalize(GObject *object) {
@@ -85,6 +89,9 @@ static void deck_plugin_finalize(GObject *object) {
     cairo_surface_destroy(priv->surface);
     if (priv->preview_image != NULL) {
         cairo_surface_destroy(priv->preview_image);
+    }
+    if (priv->preview_image_active != NULL) {
+        cairo_surface_destroy(priv->preview_image_active);
     }
     if (priv->name != NULL) {
         g_free(priv->name);
@@ -128,6 +135,16 @@ static void deck_plugin_class_init(DeckPluginClass *klass) {
         g_param_spec_pointer("preview", "Preview", "Preview image to show.", G_PARAM_READWRITE);
 
     g_object_class_install_properties(object_class, N_PROPERTIES, obj_properties);
+}
+
+static deck_plugin_set_current_state(DeckPlugin *self) {
+    DeckPluginPrivate *priv = deck_plugin_get_instance_private(self);
+
+    if (priv->state == BUTTON_STATE_SELECTED) {
+        g_object_set(G_OBJECT(self), "preview", priv->preview_image_active, NULL);
+    } else {
+        g_object_set(G_OBJECT(self), "preview", priv->preview_image, NULL);
+    }
 }
 
 GList *deck_plugin_list() {
@@ -223,14 +240,10 @@ void deck_plugin_set_preview_from_file(DeckPlugin *self, char *filename) {
     }
     priv->preview_image = gdk_cairo_surface_create_from_pixbuf(pixbuf, 0, NULL);
 
-    g_object_set(G_OBJECT(self), "preview", priv->preview_image, NULL);
+    deck_plugin_set_current_state(self);
 }
 
-void deck_plugin_reset(DeckPlugin *self) {
-    DeckPluginPrivate *priv = deck_plugin_get_instance_private(self);
-
-    g_object_set(G_OBJECT(self), "preview", priv->preview_image, NULL);
-}
+void deck_plugin_reset(DeckPlugin *self) { deck_plugin_set_current_state(self); }
 
 cairo_surface_t *g_key_file_get_surface(GKeyFile *key_file, char *group, char *prefix) {
     unsigned char *data;
