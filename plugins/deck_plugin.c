@@ -86,7 +86,6 @@ static void deck_plugin_finalize(GObject *object) {
     DeckPlugin *self = DECK_PLUGIN(object);
     DeckPluginPrivate *priv = deck_plugin_get_instance_private(self);
 
-    cairo_surface_destroy(priv->surface);
     if (priv->preview_image != NULL) {
         cairo_surface_destroy(priv->preview_image);
     }
@@ -369,4 +368,10 @@ DeckPlugin *deck_plugin_load(GKeyFile *key_file, char *group) {
         list = list->next;
     }
     return NULL;
+}
+
+DeckPluginButtonMode deck_plugin_get_button_mode(DeckPlugin *self) {
+    DeckPluginPrivate *priv = deck_plugin_get_instance_private(self);
+
+    return priv->action->mode;
 }

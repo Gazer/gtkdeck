@@ -76,6 +76,7 @@ void deck_plugin_exec(DeckPlugin *self);
 cairo_surface_t *deck_plugin_get_surface(DeckPlugin *self);
 void deck_plugin_set_preview_from_file(DeckPlugin *self, char *filename);
 void deck_plugin_reset(DeckPlugin *self);
+DeckPluginButtonMode deck_plugin_get_button_mode(DeckPlugin *self);
 
 G_END_DECLS
 

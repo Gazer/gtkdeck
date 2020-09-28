@@ -16,6 +16,7 @@
   <gresource prefix="/ar/com/p39/gtkdeck">
     <file alias="main.glade" compressed="true" preprocess="xml-stripblanks">assets/main.glade</file>
     <file alias="deck_grid.ui" compressed="true" preprocess="xml-stripblanks">assets/deck_grid.ui</file>
+    <file alias="image_picker.ui" compressed="true" preprocess="xml-stripblanks">assets/image_picker.ui</file>
     <file alias="generic_icon.png" compressed="true">assets/generic_icon.png</file>
   </gresource>
 </gresources>

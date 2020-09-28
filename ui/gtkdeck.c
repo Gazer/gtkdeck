@@ -135,13 +135,17 @@ void show_config(GtkButton *button, DeckPlugin *plugin, gpointer data) {
     }
 
     // Add Image picker button
+    GtkBuilder *builder = gtk_builder_new_from_resource("/ar/com/p39/gtkdeck/image_picker.ui");
+    GtkWidget *image_picker = GTK_WIDGET(gtk_builder_get_object(builder, "image_picker"));
+
     cairo_surface_t *surface = deck_plugin_get_surface(plugin);
-    GtkWidget *plugin_preview = gtk_image_new_from_surface(surface);
-    GtkWidget *pick_image_button = gtk_button_new();
-    gtk_container_add(GTK_CONTAINER(pick_image_button), plugin_preview);
+    GtkImage *plugin_preview = GTK_IMAGE(gtk_builder_get_object(builder, "plugin_preview"));
+    gtk_image_set_from_surface(plugin_preview, surface);
+
+    GtkWidget *pick_image_button = GTK_WIDGET(gtk_builder_get_object(builder, "pick_image_button"));
     g_signal_connect(G_OBJECT(pick_image_button), "clicked", G_CALLBACK(pick_button_image), plugin);
 
-    gtk_box_pack_start(GTK_BOX(config_row), pick_image_button, FALSE, TRUE, 5);
+    gtk_box_pack_start(GTK_BOX(config_row), image_picker, FALSE, TRUE, 5);
 
     config_area = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
     gtk_box_pack_start(GTK_BOX(config_row), GTK_WIDGET(config_area), TRUE, TRUE, 5);
@@ -150,6 +154,11 @@ void show_config(GtkButton *button, DeckPlugin *plugin, gpointer data) {
     deck_plugin_get_config_widget(DECK_PLUGIN(plugin), GTK_BOX(config_area));
 
     gtk_widget_show_all(GTK_WIDGET(config_row));
+
+    if (deck_plugin_get_button_mode(plugin) == BUTTON_MODE_NORMAL) {
+        GtkWidget *state_row = GTK_WIDGET(gtk_builder_get_object(builder, "state_row"));
+        gtk_widget_hide(state_row);
+    }
 }
 
 static void init_device_info(GtkBuilder *builder, StreamDeck *deck) {
