@@ -78,6 +78,7 @@ void deck_plugin_toggle(DeckPlugin *self);
 cairo_surface_t *deck_plugin_get_surface(DeckPlugin *self);
 cairo_surface_t *deck_plugin_get_image(DeckPlugin *self, DeckPluginState mode);
 void deck_plugin_set_image_from_file(DeckPlugin *self, DeckPluginState mode, char *filename);
+void deck_plugin_set_image_from_resource(DeckPlugin *self, DeckPluginState mode, char *resource);
 void deck_plugin_reset(DeckPlugin *self);
 DeckPluginButtonMode deck_plugin_get_button_mode(DeckPlugin *self);
 

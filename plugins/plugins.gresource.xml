@@ -16,5 +16,12 @@
   <gresource prefix="/ar/com/p39/gtkdeck/plugins">
     <file alias="system-text.png" compressed="true">assets/icons8-text-72.png</file>
     <file alias="system-website.png" compressed="true">assets/icons8-website-72.png</file>
+    <file alias="system-mute.png" compressed="true">assets/icons8-mute-72.png</file>
+    <file alias="system-next.png" compressed="true">assets/icons8-next-72.png</file>
+    <file alias="system-previous.png" compressed="true">assets/icons8-previous-72.png</file>
+    <file alias="system-resume.png" compressed="true">assets/icons8-resume-button-72.png</file>
+    <file alias="system-volume-up.png" compressed="true">assets/icons8-speaker-72.png</file>
+    <file alias="system-stop.png" compressed="true">assets/icons8-stop-72.png</file>
+    <file alias="system-volume-down.png" compressed="true">assets/icons8-low-volume-72.png</file>
   </gresource>
 </gresources>

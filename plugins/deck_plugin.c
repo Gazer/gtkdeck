@@ -118,8 +118,8 @@ static void deck_plugin_finalize(GObject *object) {
 }
 
 static void deck_plugin_constructed(GObject *object) {
-    DeckPlugin *self = DECK_PLUGIN(object);
-    DeckPluginPrivate *priv = deck_plugin_get_instance_private(self);
+    // DeckPlugin *self = DECK_PLUGIN(object);
+    // DeckPluginPrivate *priv = deck_plugin_get_instance_private(self);
 
     // deck_plugin_reset(self);
 }
@@ -146,7 +146,7 @@ static void deck_plugin_class_init(DeckPluginClass *klass) {
     g_object_class_install_properties(object_class, N_PROPERTIES, obj_properties);
 }
 
-static deck_plugin_set_current_state(DeckPlugin *self) {
+static void deck_plugin_set_current_state(DeckPlugin *self) {
     DeckPluginPrivate *priv = deck_plugin_get_instance_private(self);
 
     if (priv->state == BUTTON_STATE_SELECTED) {
@@ -269,6 +269,21 @@ void deck_plugin_set_image_from_file(DeckPlugin *self, DeckPluginState mode, cha
     deck_plugin_set_current_state(self);
 }
 
+void deck_plugin_set_image_from_resource(DeckPlugin *self, DeckPluginState mode, char *resource) {
+    DeckPluginPrivate *priv = deck_plugin_get_instance_private(self);
+
+    GdkPixbuf *pixbuf = gdk_pixbuf_new_from_resource(resource, NULL);
+    if (pixbuf != NULL) {
+        if (mode == BUTTON_STATE_NORMAL) {
+            priv->preview_image = gdk_cairo_surface_create_from_pixbuf(pixbuf, 0, NULL);
+        } else {
+            priv->preview_image_active = gdk_cairo_surface_create_from_pixbuf(pixbuf, 0, NULL);
+        }
+        g_object_unref(pixbuf);
+    }
+    deck_plugin_set_current_state(self);
+}
+
 void deck_plugin_reset(DeckPlugin *self) { deck_plugin_set_current_state(self); }
 
 void deck_plugin_toggle(DeckPlugin *self) {
@@ -281,10 +296,10 @@ void deck_plugin_toggle(DeckPlugin *self) {
 }
 
 cairo_surface_t *g_key_file_get_surface(GKeyFile *key_file, char *group, char *prefix) {
-    unsigned char *data;
+    char *data;
     cairo_format_t format;
     int width, height, stride;
-    int data_size;
+    gsize data_size;
 
     g_autofree char *l_data = g_strdup_printf("%s_data", prefix);
     g_autofree char *l_width = g_strdup_printf("%s_width", prefix);
@@ -292,8 +307,8 @@ cairo_surface_t *g_key_file_get_surface(GKeyFile *key_file, char *group, char *p
     g_autofree char *l_stride = g_strdup_printf("%s_stride", prefix);
     g_autofree char *l_format = g_strdup_printf("%s_format", prefix);
 
-    data = g_key_file_get_value(key_file, group, l_data, NULL);
-    unsigned char *surface = g_base64_decode(data, &data_size);
+    data = g_key_file_get_value(key_file, (const gchar *)group, (const gchar *)l_data, NULL);
+    unsigned char *surface = g_base64_decode((const gchar *)data, &data_size);
     g_free(data);
 
     height = g_key_file_get_integer(key_file, group, l_height, NULL);
@@ -301,8 +316,6 @@ cairo_surface_t *g_key_file_get_surface(GKeyFile *key_file, char *group, char *p
     format = g_key_file_get_integer(key_file, group, l_format, NULL);
     width = g_key_file_get_integer(key_file, group, l_width, NULL);
 
-    printf("%d\n", data_size);
-    printf("%dx%d - %d (%d)\n", width, height, stride, format);
     return cairo_image_surface_create_for_data(surface, format, width, height, stride);
 }
 

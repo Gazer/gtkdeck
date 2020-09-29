@@ -2,6 +2,7 @@
 
 #include "website.h"
 #include "text.h"
+#include "media.h"
 
 DeckPlugin *system_plugin_clone(DeckPlugin *self, int action);
 DeckPlugin *system_plugin_clone_with_code(DeckPlugin *self, int code);
@@ -9,17 +10,18 @@ DeckPluginInfo *system_plugin_info(DeckPlugin *self);
 
 typedef struct _SystemPluginPrivate {
     gchar *url;
+    int media_key;
 } SystemPluginPrivate;
 
 G_DEFINE_TYPE_WITH_PRIVATE(SystemPlugin, system_plugin, DECK_TYPE_PLUGIN)
 
-typedef enum { URL = 1, N_PROPERTIES } SystemPluginProperty;
+typedef enum { URL = 1, MEDIA_KEY, N_PROPERTIES } SystemPluginProperty;
 
 static GParamSpec *obj_properties[N_PROPERTIES] = {
     NULL,
 };
 
-typedef enum { WEBSITE = 0, TEXT, N_ACTIONS } SystemActionCodes;
+typedef enum { WEBSITE = 0, TEXT, MULTIMEDIA, N_ACTIONS } SystemActionCodes;
 
 DeckPluginInfo SYSTEM_PLUGIN_INFO = {
     "System",
@@ -29,6 +31,8 @@ DeckPluginInfo SYSTEM_PLUGIN_INFO = {
          website_config, website_exec, website_save, website_load},
         {BUTTON_MODE_NORMAL, "Text", "/ar/com/p39/gtkdeck/plugins/system-text.png", TEXT,
          text_config, text_exec, text_save, text_load},
+        {BUTTON_MODE_NORMAL, "Multimedia", "/ar/com/p39/gtkdeck/plugins/system-previous.png",
+         MULTIMEDIA, media_config, media_exec, media_save, media_load},
     },
 };
 
@@ -64,6 +68,10 @@ static void system_plugin_set_property(GObject *object, guint property_id, const
         priv->url = g_strdup(g_value_get_string(value));
         break;
     }
+    case MEDIA_KEY: {
+        priv->media_key = g_value_get_uint(value);
+        break;
+    }
     default:
         /* We don't have any other property... */
         G_OBJECT_WARN_INVALID_PROPERTY_ID(object, property_id, pspec);
@@ -78,6 +86,10 @@ static void system_plugin_get_property(GObject *object, guint property_id, GValu
     switch ((SystemPluginProperty)property_id) {
     case URL: {
         g_value_set_string(value, priv->url);
+        break;
+    }
+    case MEDIA_KEY: {
+        g_value_set_uint(value, priv->media_key);
         break;
     }
     default:
@@ -103,6 +115,8 @@ static void system_plugin_class_init(SystemPluginClass *klass) {
     object_class->finalize = system_plugin_finalize;
 
     obj_properties[URL] = g_param_spec_string("url", "Url", "Url.", NULL, G_PARAM_READWRITE);
+    obj_properties[MEDIA_KEY] =
+        g_param_spec_uint("media_key", "media_key", "media_key.", 0, 6, 0, G_PARAM_READWRITE);
 
     g_object_class_install_properties(object_class, N_PROPERTIES, obj_properties);
 }

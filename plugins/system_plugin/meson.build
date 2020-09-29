@@ -1,6 +1,6 @@
 system_plugin = static_library(
     'system_plugin',
-    sources: files(['system_plugin.c', 'website.c', 'text.c']),
+    sources: files(['system_plugin.c', 'website.c', 'text.c', 'media.c']),
     dependencies : gtkdeps,
     include_directories: deck_plugins_inc
 )
