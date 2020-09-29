@@ -62,3 +62,6 @@ $> ninja -C _build
 ```
 $> ./_build/gtkdeck
 ```
+
+
+<a target="_blank" href="https://icons8.com/icons/set/domain--v1">Website icon</a> icon by <a target="_blank" href="https://icons8.com">Icons8</a>

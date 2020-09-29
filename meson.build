@@ -12,6 +12,12 @@ gtkdeps = [
     dependency('hidapi-libusb'),
 ]
 
+main_files = files([
+  'ui/gtkdeck.c',
+  'ui/deck_grid.c',
+  'ui/image_picker.c'
+])
+
 subdir('streamdeck')
 subdir('plugins')
 
@@ -19,14 +25,11 @@ dependencies = gtkdeps + [streamdeck_dep, deck_plugins_dep]
 
 resource_data = files(
   'assets/main.glade',
+  'assets/image_picker.ui',
+  'assets/deck_grid.ui',
   'assets/generic_icon.png'
 )
 
-main_files = files([
-  'ui/gtkdeck.c',
-  'ui/deck_grid.c',
-  'ui/image_picker.c'
-])
 
 main_includes = include_directories('streamdeck')
 

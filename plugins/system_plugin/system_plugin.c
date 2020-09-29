@@ -25,9 +25,10 @@ DeckPluginInfo SYSTEM_PLUGIN_INFO = {
     "System",
     N_ACTIONS,
     {
-        {BUTTON_MODE_NORMAL, "Website", WEBSITE, website_config, website_exec, website_save,
-         website_load},
-        {BUTTON_MODE_NORMAL, "Text", TEXT, text_config, text_exec, text_save, text_load},
+        {BUTTON_MODE_NORMAL, "Website", "/ar/com/p39/gtkdeck/plugins/system-website.png", WEBSITE,
+         website_config, website_exec, website_save, website_load},
+        {BUTTON_MODE_NORMAL, "Text", "/ar/com/p39/gtkdeck/plugins/system-text.png", TEXT,
+         text_config, text_exec, text_save, text_load},
     },
 };
 

@@ -32,11 +32,28 @@ static void deck_plugin_set_property(GObject *object, guint property_id, const G
                                      GParamSpec *pspec) {
     DeckPlugin *self = DECK_PLUGIN(object);
     DeckPluginPrivate *priv = deck_plugin_get_instance_private(self);
+    GdkPixbuf *pixbuf = NULL;
 
     switch ((DeckPluginProperty)property_id) {
     case ACTION: {
         priv->action = g_value_get_pointer(value);
         printf(">> Action set\n");
+
+        if (priv->action != NULL && priv->action->default_image != NULL) {
+            GError *error = NULL;
+            pixbuf = gdk_pixbuf_new_from_resource(priv->action->default_image, &error);
+            if (error != NULL) {
+                printf("%s\n", error->message);
+                g_error_free(error);
+            }
+        } else {
+            pixbuf = gdk_pixbuf_new_from_resource("/ar/com/p39/gtkdeck/generic_icon.png", NULL);
+        }
+        if (pixbuf != NULL) {
+            priv->preview_image = gdk_cairo_surface_create_from_pixbuf(pixbuf, 0, NULL);
+            g_object_unref(pixbuf);
+        }
+        deck_plugin_reset(self);
         break;
     }
     case NAME: {
@@ -104,14 +121,7 @@ static void deck_plugin_constructed(GObject *object) {
     DeckPlugin *self = DECK_PLUGIN(object);
     DeckPluginPrivate *priv = deck_plugin_get_instance_private(self);
 
-    // GdkPixbuf *pixbuf = gdk_pixbuf_new_from_resource("/ar/com/p39/gtkdeck/generic_icon.png",
-    // NULL); if (pixbuf != NULL) {
-    //     printf("yea\n");
-    //     priv->preview_image = gdk_cairo_surface_create_from_pixbuf(pixbuf, 0, NULL);
-    //     g_object_unref(pixbuf);
-    // } else {
-    //     printf("bu\n");
-    // }
+    // deck_plugin_reset(self);
 }
 
 static void deck_plugin_class_init(DeckPluginClass *klass) {
