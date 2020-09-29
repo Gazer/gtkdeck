@@ -42,6 +42,7 @@
             <property name="active">True</property>
             <property name="draw_indicator">True</property>
             <property name="group">state_active_button</property>
+            <signal name="toggled" handler="image_picker_show_state" swapped="yes"/>
           </object>
           <packing>
             <property name="expand">True</property>
@@ -60,6 +61,7 @@
             <property name="active">True</property>
             <property name="draw_indicator">True</property>
             <property name="group">state_normal_button</property>
+            <signal name="toggled" handler="image_picker_show_state" swapped="yes"/>
           </object>
           <packing>
             <property name="expand">True</property>

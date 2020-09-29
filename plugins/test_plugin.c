@@ -137,7 +137,7 @@ void test_0_exec(DeckPlugin *self) {
 
 void test_1_config(DeckPlugin *self, GtkBox *parent) {}
 
-void test_1_exec(DeckPlugin *self) {}
+void test_1_exec(DeckPlugin *self) { deck_plugin_toggle(self); }
 
 void test_0_save(DeckPlugin *self, char *group, GKeyFile *key_file) {
     TestPluginPrivate *priv = test_plugin_get_instance_private(TEST_PLUGIN(self));

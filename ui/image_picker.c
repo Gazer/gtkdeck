@@ -1,6 +1,7 @@
 #include "image_picker.h"
 
 static void image_picker_pick_image(ImagePicker *self, GtkButton *button);
+static void image_picker_show_state(ImagePicker *self, GtkToggleButton *button);
 
 typedef struct _ImagePickerPrivate {
     /* This is the entry defined in the GtkBuilder xml */
@@ -55,7 +56,6 @@ static void image_picker_constructed(GObject *object) {
 
     cairo_surface_t *surface = deck_plugin_get_image(priv->plugin, BUTTON_STATE_NORMAL);
     gtk_image_set_from_surface(GTK_IMAGE(priv->plugin_preview), surface);
-    printf("-> %p\n", priv);
 }
 
 static void image_picker_finalize(GObject *object) {
@@ -104,6 +104,7 @@ static void image_picker_class_init(ImagePickerClass *klass) {
      * connections defined in the GtkBuilder xml
      */
     gtk_widget_class_bind_template_callback(widget_class, image_picker_pick_image);
+    gtk_widget_class_bind_template_callback(widget_class, image_picker_show_state);
 
     // g_object_set_data(G_OBJECT(state_normal_button), "image_state",
     //                   GINT_TO_POINTER(BUTTON_STATE_NORMAL));
@@ -130,7 +131,6 @@ static void image_picker_init(ImagePicker *widget) {
 
 static void image_picker_pick_image(ImagePicker *self, GtkButton *button) {
     ImagePickerPrivate *priv = image_picker_get_instance_private(self);
-    printf("2> %p\n", priv);
 
     GtkFileFilter *filter = gtk_file_filter_new();
     GtkWidget *dialog;
@@ -150,13 +150,28 @@ static void image_picker_pick_image(ImagePicker *self, GtkButton *button) {
         GtkFileChooser *chooser = GTK_FILE_CHOOSER(dialog);
         filename = gtk_file_chooser_get_filename(chooser);
 
-        printf("gf %p\n", priv->plugin);
-        deck_plugin_set_preview_from_file(priv->plugin, filename);
+        DeckPluginState state = BUTTON_STATE_NORMAL;
+        if (gtk_toggle_button_get_active(priv->state_active_button)) {
+            state = BUTTON_STATE_SELECTED;
+        }
+        deck_plugin_set_image_from_file(priv->plugin, state, filename);
 
         g_free(filename);
     }
 
     gtk_widget_destroy(dialog);
+}
+
+static void image_picker_show_state(ImagePicker *self, GtkToggleButton *button) {
+    ImagePickerPrivate *priv = image_picker_get_instance_private(self);
+
+    if (gtk_toggle_button_get_active(priv->state_active_button)) {
+        cairo_surface_t *surface = deck_plugin_get_image(priv->plugin, BUTTON_STATE_SELECTED);
+        gtk_image_set_from_surface(GTK_IMAGE(priv->plugin_preview), surface);
+    } else {
+        cairo_surface_t *surface = deck_plugin_get_image(priv->plugin, BUTTON_STATE_NORMAL);
+        gtk_image_set_from_surface(GTK_IMAGE(priv->plugin_preview), surface);
+    }
 }
 
 // static image_preview_change(GtkRadioButton *button, gpointer user_data) {

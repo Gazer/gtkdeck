@@ -240,19 +240,35 @@ cairo_surface_t *deck_plugin_get_image(DeckPlugin *self, DeckPluginState mode) {
     return priv->preview_image_active;
 }
 
-void deck_plugin_set_preview_from_file(DeckPlugin *self, char *filename) {
+void deck_plugin_set_image_from_file(DeckPlugin *self, DeckPluginState mode, char *filename) {
     DeckPluginPrivate *priv = deck_plugin_get_instance_private(self);
     GdkPixbuf *pixbuf = gdk_pixbuf_new_from_file_at_scale(filename, 72, 72, FALSE, NULL);
 
-    if (priv->preview_image != NULL) {
-        cairo_surface_destroy(priv->preview_image);
-    }
-    priv->preview_image = gdk_cairo_surface_create_from_pixbuf(pixbuf, 0, NULL);
+    if (mode == BUTTON_STATE_NORMAL) {
+        if (priv->preview_image != NULL) {
+            cairo_surface_destroy(priv->preview_image);
+        }
+        priv->preview_image = gdk_cairo_surface_create_from_pixbuf(pixbuf, 0, NULL);
 
+    } else {
+        if (priv->preview_image_active != NULL) {
+            cairo_surface_destroy(priv->preview_image_active);
+        }
+        priv->preview_image_active = gdk_cairo_surface_create_from_pixbuf(pixbuf, 0, NULL);
+    }
     deck_plugin_set_current_state(self);
 }
 
 void deck_plugin_reset(DeckPlugin *self) { deck_plugin_set_current_state(self); }
+
+void deck_plugin_toggle(DeckPlugin *self) {
+    DeckPluginPrivate *priv = deck_plugin_get_instance_private(self);
+    if (priv->state == BUTTON_STATE_NORMAL) {
+        priv->state = BUTTON_STATE_SELECTED;
+    } else {
+        priv->state = BUTTON_STATE_NORMAL;
+    }
+}
 
 cairo_surface_t *g_key_file_get_surface(GKeyFile *key_file, char *group, char *prefix) {
     unsigned char *data;
@@ -338,8 +354,10 @@ void deck_plugin_save(DeckPlugin *self, int position, GKeyFile *key_file) {
     g_key_file_set_integer(key_file, group, "code", priv->action->code);
 
     if (priv->preview_image != NULL) {
-        printf("Saving image for %s\n", group);
         g_key_file_set_surface(key_file, group, "preview_image", priv->preview_image);
+    }
+    if (priv->preview_image_active != NULL) {
+        g_key_file_set_surface(key_file, group, "preview_image_active", priv->preview_image_active);
     }
 
     priv->action->save(self, group, key_file);
@@ -369,7 +387,10 @@ DeckPlugin *deck_plugin_load(GKeyFile *key_file, char *group) {
             if (g_key_file_has_key(key_file, group, "preview_image_data", NULL)) {
                 new_priv->preview_image = g_key_file_get_surface(key_file, group, "preview_image");
             }
-            printf("  Loading private data\n");
+            if (g_key_file_has_key(key_file, group, "preview_image_active_data", NULL)) {
+                new_priv->preview_image_active =
+                    g_key_file_get_surface(key_file, group, "preview_image_active");
+            }
             new_priv->action->load(new_plugin, group, key_file);
 
             deck_plugin_reset(new_plugin);
