@@ -74,6 +74,7 @@ DeckPluginInfo *deck_plugin_get_info(DeckPlugin *self);
 void deck_plugin_get_config_widget(DeckPlugin *self, GtkBox *parent);
 void deck_plugin_exec(DeckPlugin *self);
 cairo_surface_t *deck_plugin_get_surface(DeckPlugin *self);
+cairo_surface_t *deck_plugin_get_image(DeckPlugin *self, DeckPluginState mode);
 void deck_plugin_set_preview_from_file(DeckPlugin *self, char *filename);
 void deck_plugin_reset(DeckPlugin *self);
 DeckPluginButtonMode deck_plugin_get_button_mode(DeckPlugin *self);

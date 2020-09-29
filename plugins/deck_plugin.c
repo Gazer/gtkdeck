@@ -230,6 +230,16 @@ cairo_surface_t *deck_plugin_get_surface(DeckPlugin *self) {
     return priv->surface;
 }
 
+cairo_surface_t *deck_plugin_get_image(DeckPlugin *self, DeckPluginState mode) {
+    DeckPluginPrivate *priv = deck_plugin_get_instance_private(self);
+
+    if (mode == BUTTON_STATE_NORMAL) {
+        return priv->preview_image;
+    }
+
+    return priv->preview_image_active;
+}
+
 void deck_plugin_set_preview_from_file(DeckPlugin *self, char *filename) {
     DeckPluginPrivate *priv = deck_plugin_get_instance_private(self);
     GdkPixbuf *pixbuf = gdk_pixbuf_new_from_file_at_scale(filename, 72, 72, FALSE, NULL);

@@ -32,7 +32,7 @@ DeckPluginInfo TEST_PLUGIN_INFO = {
     {
         {BUTTON_MODE_NORMAL, "Colored Button", COLORED_BUTTON, test_0_config, test_0_exec,
          test_0_save, test_0_load},
-        {BUTTON_MODE_NORMAL, "Always Red", RED_BUTTON, test_1_config, test_1_exec, test_1_save,
+        {BUTTON_MODE_TOGGLE, "Always Red", RED_BUTTON, test_1_config, test_1_exec, test_1_save,
          test_1_load},
     },
 };
@@ -47,9 +47,6 @@ static void test_plugin_init(TestPlugin *self) {
 }
 
 static void test_plugin_finalize(GObject *object) {
-    TestPlugin *self = TEST_PLUGIN(object);
-    TestPluginPrivate *priv = test_plugin_get_instance_private(self);
-
     G_OBJECT_CLASS(test_plugin_parent_class)->finalize(object);
 }
 
@@ -153,7 +150,6 @@ void test_0_save(DeckPlugin *self, char *group, GKeyFile *key_file) {
 void test_0_load(DeckPlugin *self, char *group, GKeyFile *key_file) {
     printf("  test_0_load\n");
     TestPluginPrivate *priv = test_plugin_get_instance_private(TEST_PLUGIN(self));
-    gsize length;
 
     g_autofree char *color = g_key_file_get_string(key_file, group, "color", NULL);
     gdk_rgba_parse(&priv->color, color);

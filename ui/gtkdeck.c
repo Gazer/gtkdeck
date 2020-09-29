@@ -2,6 +2,7 @@
 #include "streamdeck.h"
 #include "test_plugin.h"
 #include "deck_grid.h"
+#include "image_picker.h"
 #include <gtk/gtk.h>
 #include <unistd.h>
 
@@ -93,35 +94,6 @@ void init_plugin_tree(GtkTreeView *list) {
     gtk_tree_view_set_model(list, GTK_TREE_MODEL(treestore));
 }
 
-void pick_button_image(GtkButton *button, gpointer data) {
-    DeckPlugin *plugin = DECK_PLUGIN(data);
-
-    GtkFileFilter *filter = gtk_file_filter_new();
-    GtkWidget *dialog;
-    GtkFileChooserAction action = GTK_FILE_CHOOSER_ACTION_OPEN;
-    gint res;
-
-    gtk_file_filter_add_mime_type(filter, "image/*");
-
-    dialog = gtk_file_chooser_dialog_new("Open File", NULL, action, "_Cancel", GTK_RESPONSE_CANCEL,
-                                         "_Open", GTK_RESPONSE_ACCEPT, NULL);
-
-    gtk_file_chooser_add_filter(GTK_FILE_CHOOSER(dialog), filter);
-
-    res = gtk_dialog_run(GTK_DIALOG(dialog));
-    if (res == GTK_RESPONSE_ACCEPT) {
-        char *filename;
-        GtkFileChooser *chooser = GTK_FILE_CHOOSER(dialog);
-        filename = gtk_file_chooser_get_filename(chooser);
-
-        deck_plugin_set_preview_from_file(plugin, filename);
-
-        g_free(filename);
-    }
-
-    gtk_widget_destroy(dialog);
-}
-
 void show_config(GtkButton *button, DeckPlugin *plugin, gpointer data) {
     GList *children;
     GtkWidget *config_area;
@@ -135,15 +107,8 @@ void show_config(GtkButton *button, DeckPlugin *plugin, gpointer data) {
     }
 
     // Add Image picker button
-    GtkBuilder *builder = gtk_builder_new_from_resource("/ar/com/p39/gtkdeck/image_picker.ui");
-    GtkWidget *image_picker = GTK_WIDGET(gtk_builder_get_object(builder, "image_picker"));
-
-    cairo_surface_t *surface = deck_plugin_get_surface(plugin);
-    GtkImage *plugin_preview = GTK_IMAGE(gtk_builder_get_object(builder, "plugin_preview"));
-    gtk_image_set_from_surface(plugin_preview, surface);
-
-    GtkWidget *pick_image_button = GTK_WIDGET(gtk_builder_get_object(builder, "pick_image_button"));
-    g_signal_connect(G_OBJECT(pick_image_button), "clicked", G_CALLBACK(pick_button_image), plugin);
+    cairo_surface_t *normal_surface = deck_plugin_get_image(plugin, BUTTON_STATE_NORMAL);
+    GtkWidget *image_picker = image_picker_new(plugin);
 
     gtk_box_pack_start(GTK_BOX(config_row), image_picker, FALSE, TRUE, 5);
 
@@ -154,11 +119,6 @@ void show_config(GtkButton *button, DeckPlugin *plugin, gpointer data) {
     deck_plugin_get_config_widget(DECK_PLUGIN(plugin), GTK_BOX(config_area));
 
     gtk_widget_show_all(GTK_WIDGET(config_row));
-
-    if (deck_plugin_get_button_mode(plugin) == BUTTON_MODE_NORMAL) {
-        GtkWidget *state_row = GTK_WIDGET(gtk_builder_get_object(builder, "state_row"));
-        gtk_widget_hide(state_row);
-    }
 }
 
 static void init_device_info(GtkBuilder *builder, StreamDeck *deck) {
