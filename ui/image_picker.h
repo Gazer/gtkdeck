@@ -18,13 +18,10 @@ G_BEGIN_DECLS
 
 typedef struct _ImagePicker ImagePicker;
 typedef struct _ImagePickerClass ImagePickerClass;
-typedef struct _ImagePickerPrivate ImagePickerPrivate;
 
 struct _ImagePicker {
     /*< private >*/
     GtkBox parent;
-
-    ImagePickerPrivate *priv;
 };
 
 struct _ImagePickerClass {

@@ -12,6 +12,7 @@
         <property name="visible">True</property>
         <property name="can_focus">True</property>
         <property name="receives_default">True</property>
+        <signal name="clicked" handler="image_picker_pick_image" swapped="yes"/>
         <child>
           <object class="GtkImage" id="plugin_preview">
             <property name="visible">True</property>

@@ -107,7 +107,6 @@ void show_config(GtkButton *button, DeckPlugin *plugin, gpointer data) {
     }
 
     // Add Image picker button
-    cairo_surface_t *normal_surface = deck_plugin_get_image(plugin, BUTTON_STATE_NORMAL);
     GtkWidget *image_picker = image_picker_new(plugin);
 
     gtk_box_pack_start(GTK_BOX(config_row), image_picker, FALSE, TRUE, 5);
