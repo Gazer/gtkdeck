@@ -3,6 +3,7 @@
 #include "test_plugin.h"
 #include "deck_grid.h"
 #include "image_picker.h"
+#include "libobsws.h"
 #include <gtk/gtk.h>
 #include <unistd.h>
 
@@ -171,6 +172,13 @@ static void activate(GtkApplication *app, gpointer user_data) {
     gtk_widget_show_all(window);
 }
 
+static void on_scene_changed(GObject *gobject, GParamSpec *pspec, gpointer user_data) {
+    g_autofree gchar *text;
+
+    g_object_get(gobject, "scene", &text, NULL);
+    printf("-> %s\n", text);
+}
+
 int main(int argc, char **argv) {
     GtkApplication *app;
     GList *devices;
@@ -185,6 +193,9 @@ int main(int argc, char **argv) {
 
     app = gtk_application_new("ar.com.p39.gtkdeck", G_APPLICATION_FLAGS_NONE);
     g_signal_connect(app, "activate", G_CALLBACK(activate), devices);
+
+    ObsWs *test = obs_ws_new();
+    g_signal_connect(test, "notify::scene", G_CALLBACK(on_scene_changed), NULL);
 
     status = g_application_run(G_APPLICATION(app), argc, argv);
 

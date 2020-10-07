@@ -10,6 +10,8 @@ gtkdeps = [
     dependency('gtk+-3.0'),
     dependency('libusb-1.0'),
     dependency('hidapi-libusb'),
+    dependency('libwebsockets'),
+    dependency('json-glib-1.0')
 ]
 
 main_files = files([
@@ -20,8 +22,9 @@ main_files = files([
 
 subdir('streamdeck')
 subdir('plugins')
+subdir('libobsws')
 
-dependencies = gtkdeps + [streamdeck_dep, deck_plugins_dep]
+dependencies = gtkdeps + [streamdeck_dep, deck_plugins_dep, libobsws_dep]
 
 resource_data = files(
   'assets/main.glade',
