@@ -15,6 +15,7 @@ struct _ObsWsClass {
     void (*heartbeat)(const gchar *profile, const gchar *scene);
 
     GThread *thread;
+    // struct vhd_minimal_client_echo *vhd;
 
     /* Padding to allow adding up to 12 new virtual functions without
      * breaking ABI. */
@@ -26,6 +27,7 @@ struct _ObsWsClass {
  */
 GType obs_ws_get_type();
 ObsWs *obs_ws_new();
+GList *obs_ws_get_scenes(ObsWs *);
 
 G_END_DECLS
 

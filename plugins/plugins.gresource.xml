@@ -23,5 +23,7 @@
     <file alias="system-volume-up.png" compressed="true">assets/icons8-speaker-72.png</file>
     <file alias="system-stop.png" compressed="true">assets/icons8-stop-72.png</file>
     <file alias="system-volume-down.png" compressed="true">assets/icons8-low-volume-72.png</file>
+    <file alias="obs-scene.png" compressed="true">assets/icons8-obs-scene.png</file>
+    <file alias="obs-scene-selected.png" compressed="true">assets/icons8-obs-scene-selected.png</file>
   </gresource>
 </gresources>

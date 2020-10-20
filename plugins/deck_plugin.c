@@ -6,6 +6,7 @@
 // Plugins
 #include "test_plugin.h"
 #include "system_plugin/system_plugin.h"
+#include "obs_plugin/obs_plugin.h"
 
 static GList *available_plugins = NULL;
 
@@ -40,12 +41,7 @@ static void deck_plugin_set_property(GObject *object, guint property_id, const G
         printf(">> Action set\n");
 
         if (priv->action != NULL && priv->action->default_image != NULL) {
-            GError *error = NULL;
-            pixbuf = gdk_pixbuf_new_from_resource(priv->action->default_image, &error);
-            if (error != NULL) {
-                printf("%s\n", error->message);
-                g_error_free(error);
-            }
+            pixbuf = gdk_pixbuf_new_from_resource(priv->action->default_image, NULL);
         } else {
             pixbuf = gdk_pixbuf_new_from_resource("/ar/com/p39/gtkdeck/generic_icon.png", NULL);
         }
@@ -53,6 +49,14 @@ static void deck_plugin_set_property(GObject *object, guint property_id, const G
             priv->preview_image = gdk_cairo_surface_create_from_pixbuf(pixbuf, 0, NULL);
             g_object_unref(pixbuf);
         }
+        if (priv->action != NULL && priv->action->selected_image != NULL) {
+            pixbuf = gdk_pixbuf_new_from_resource(priv->action->selected_image, NULL);
+            if (pixbuf != NULL) {
+                priv->preview_image_active = gdk_cairo_surface_create_from_pixbuf(pixbuf, 0, NULL);
+                g_object_unref(pixbuf);
+            }
+        }
+
         deck_plugin_reset(self);
         break;
     }
@@ -161,6 +165,7 @@ GList *deck_plugin_list() {
         // Register plugins
         deck_plugin_register(test_plugin_new());
         deck_plugin_register(system_plugin_new());
+        deck_plugin_register(obs_plugin_new());
     }
     return available_plugins;
 }

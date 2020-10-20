@@ -30,9 +30,9 @@ DeckPluginInfo TEST_PLUGIN_INFO = {
     "Test Plugin",
     N_ACTIONS,
     {
-        {BUTTON_MODE_NORMAL, "Colored Button", NULL, COLORED_BUTTON, test_0_config, test_0_exec,
-         test_0_save, test_0_load},
-        {BUTTON_MODE_TOGGLE, "Always Red", NULL, RED_BUTTON, test_1_config, test_1_exec,
+        {BUTTON_MODE_NORMAL, "Colored Button", NULL, NULL, COLORED_BUTTON, test_0_config,
+         test_0_exec, test_0_save, test_0_load},
+        {BUTTON_MODE_TOGGLE, "Always Red", NULL, NULL, RED_BUTTON, test_1_config, test_1_exec,
          test_1_save, test_1_load},
     },
 };

@@ -31,6 +31,7 @@ typedef struct _DeckPluginAction {
     DeckPluginButtonMode mode;
     gchar *name;
     const gchar *default_image;
+    const gchar *selected_image;
     int code;
     void (*config)(DeckPlugin *self, GtkBox *parent);
     void (*exec)(DeckPlugin *self);

@@ -10,7 +10,7 @@ gtkdeps = [
     dependency('gtk+-3.0'),
     dependency('libusb-1.0'),
     dependency('hidapi-libusb'),
-    dependency('libwebsockets'),
+    # dependency('libwebsockets'),
     dependency('json-glib-1.0')
 ]
 

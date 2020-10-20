@@ -1,5 +1,6 @@
 #include "libobsws.h"
-#include <libwebsockets.h>
+#include "libuwsc/uwsc.h"
+#include <json-glib/json-glib.h>
 
 static gpointer obs_ws_main(gpointer user_data);
 
@@ -136,143 +137,179 @@ static void obs_ws_heartbeat(const gchar *profile, const gchar *scene) {
     if (g_strcmp0(scene, priv->scene) != 0) {
         g_object_set(G_OBJECT(obs), "scene", scene, NULL);
     }
+
+    g_object_unref(G_OBJECT(obs));
 }
 
 // Public Members
 
 ObsWs *obs_ws_new() { return g_object_new(OBS_TYPE_WS, NULL); }
 
+GList *obs_ws_get_scenes(ObsWs *self) {
+    ObsWsClass *klass = OBS_WS_GET_CLASS(self);
+
+    // {"request-type":"GetSceneList","message-id":"4"}
+    // struct vhd_minimal_client_echo *vhd = klass->vhd;
+
+    // if (!vhd->established) {
+    // printf("Not connected\n");
+    // return NULL;
+    // }
+
+    // lws_ring_insert()
+    return NULL;
+}
+
 // Private
 
-#define LWS_PLUGIN_STATIC
-#include "protocol_lws_minimal_client_echo.c"
+const gchar *json_object_get_string_value(JsonObject *json, const gchar *key) {
+    if (json_object_has_member(json, key)) {
+        JsonNode *updateType = json_object_get_member(json, key);
+        if (JSON_NODE_HOLDS_VALUE(updateType)) {
+            return json_node_get_string(updateType);
+        }
+    }
+    return NULL;
+}
 
-static struct lws_protocols protocols[] = {
-    LWS_PLUGIN_PROTOCOL_MINIMAL_CLIENT_ECHO, {NULL, NULL, 0, 0} /* terminator */
-};
-
-static struct lws_context *context;
-static int interrupted, port = 4444, options = 0;
-static const char *url = "/", *ads = "localhost", *iface = NULL;
 static ObsWsClass *klass = NULL;
 
-/* pass pointers to shared vars to the protocol */
+static int uwsc_message_id() {
+    static int next_message_id = 0;
+    return next_message_id++;
+}
 
-static const struct lws_protocol_vhost_options pvo_iface = {
-    NULL, NULL, "iface", /* pvo name */
-    (void *)&iface       /* pvo value */
-};
+static void uwsc_onmessage(struct uwsc_client *cl, void *data, size_t len, bool binary) {
+    // printf("Recv:");
 
-static const struct lws_protocol_vhost_options pvo_ads = {
-    &pvo_iface, NULL, "ads", /* pvo name */
-    (void *)&ads             /* pvo value */
-};
+    if (!binary) {
+        JsonParser *parser = json_parser_new();
 
-static const struct lws_protocol_vhost_options pvo_url = {
-    &pvo_ads, NULL, "url", /* pvo name */
-    (void *)&url           /* pvo value */
-};
+        if (json_parser_load_from_data(parser, (const gchar *)data, len, NULL)) {
+            JsonNode *root = json_parser_get_root(parser);
+            if (JSON_NODE_HOLDS_OBJECT(root)) {
+                JsonObject *message = json_node_get_object(root);
+                const gchar *updateType = json_object_get_string_value(message, "update-type");
+                const gchar *currentProfile =
+                    json_object_get_string_value(message, "current-profile");
+                const gchar *currentScene = json_object_get_string_value(message, "current-scene");
+                // const gchar *updateType = json_object_get_boolean_value(message,
+                // "recording"); const gchar *updateType = json_object_get_string_value(message,
+                // "streaming");
 
-static const struct lws_protocol_vhost_options pvo_options = {
-    &pvo_url, NULL, "options", /* pvo name */
-    (void *)&options           /* pvo value */
-};
+                if (g_strcmp0(updateType, "Heartbeat") == 0) {
+                    printf("%s\n", currentScene);
+                    klass->heartbeat(currentProfile, currentScene);
+                }
+            }
+        } else {
+            // TODO: We may receive multiple packets for the same message
+            // We need a buffer and check for lws_is_final_fragment and lws_is_first_fragment
+            // printf("Cant parse\n");
+            // printf("%s\n", (const gchar *)in);
+        }
+        g_object_unref(parser);
+        // printf("[%.*s]\n", (int)len, (char *)data);
+    }
+}
 
-static const struct lws_protocol_vhost_options pvo_port = {
-    &pvo_options, NULL, "port", /* pvo name */
-    (void *)&port               /* pvo value */
-};
+static void uwsc_onerror(struct uwsc_client *cl, int err, const char *msg) {
+    uwsc_log_err("onerror:%d: %s\n", err, msg);
+    ev_break(cl->loop, EVBREAK_ALL);
+}
 
-static const struct lws_protocol_vhost_options pvo_interrupted = {
-    &pvo_port, NULL, "interrupted", /* pvo name */
-    (void *)&interrupted            /* pvo value */
-};
+static void uwsc_onclose(struct uwsc_client *cl, int code, const char *reason) {
+    uwsc_log_err("onclose:%d: %s\n", code, reason);
+    ev_break(cl->loop, EVBREAK_ALL);
+}
 
-static const struct lws_protocol_vhost_options pvo_klass = {
-    &pvo_interrupted, NULL, "klass", /* pvo name */
-    (void *)&klass                   /* pvo value */
-};
+static void uwsc_send(struct uwsc_client *cl, int message_id, GHashTable *map) {
+    char message[10];
+    g_sprintf(message, "%d", message_id);
+    g_hash_table_insert(map, "message-id", g_strdup(message));
 
-static const struct lws_protocol_vhost_options pvo = {
-    NULL,                      /* "next" pvo linked-list */
-    &pvo_klass,                /* "child" pvo linked-list */
-    "lws-minimal-client-echo", /* protocol name we belong to on this vhost */
-    ""                         /* ignored */
-};
-// static const struct lws_extension extensions[] = {{"permessage-deflate",
-//                                                    lws_extension_callback_pm_deflate,
-//                                                    "permessage-deflate"
-//                                                    "; client_no_context_takeover"
-//                                                    "; client_max_window_bits"},
-//                                                   {NULL, NULL, NULL /* terminator */}};
+    GHashTableIter iter;
 
-void sigint_handler(int sig) { interrupted = 1; }
+    gpointer key, value;
+    JsonGenerator *json = json_generator_new();
+    JsonObject *obj = json_object_new();
+    JsonNode *node = json_node_new(JSON_NODE_OBJECT);
+
+    g_hash_table_iter_init(&iter, map);
+    while (g_hash_table_iter_next(&iter, &key, &value)) {
+        if (g_strcmp0("true", value) == 0) {
+            json_object_set_boolean_member(obj, key, TRUE);
+        } else {
+            json_object_set_string_member(obj, key, value);
+        }
+    }
+
+    json_node_set_object(node, obj);
+    json_generator_set_root(json, node);
+
+    gsize len;
+    gchar *data = json_generator_to_data(json, &len);
+    printf(">> %s\n", data);
+    cl->send(cl, (const void *)data, (size_t)len, 0);
+
+    g_free(data);
+    g_object_unref(json);
+}
+
+static void uwsc_onopen(struct uwsc_client *cl) {
+    // static struct ev_io stdin_watcher;
+
+    uwsc_log_info("onopen\n");
+
+    GHashTable *map = g_hash_table_new(g_str_hash, g_str_equal);
+    // {"enable":true,"request-type":"SetHeartbeat","message-id":"1"}
+    // {"enable":true,"request-type":"SetHeartbeat","message-id":"2"}
+    // g_hash_table_insert(map, "enable", "true");
+    // g_hash_table_insert(map, "request-type", "SetHeartbeat");
+    // g_hash_table_insert(map, "message-id", message);
+
+    g_hash_table_insert(map, "request-type", "GetAuthRequired");
+
+    int message_id = uwsc_message_id();
+    uwsc_send(cl, message_id, map);
+}
+
+static void signal_cb(struct ev_loop *loop, ev_signal *w, int revents) {
+    if (w->signum == SIGINT) {
+        ev_break(loop, EVBREAK_ALL);
+        uwsc_log_info("Normal quit\n");
+    }
+}
 
 static gpointer obs_ws_main(gpointer user_data) {
     // Save Global Thread Klass to use in the Protocol
     klass = (ObsWsClass *)user_data;
 
-    struct lws_context_creation_info info;
-    int n, logs = LLL_USER | LLL_ERR | LLL_WARN | LLL_NOTICE
-        /* for LLL_ verbosity above NOTICE to be built into lws,
-         * lws must have been configured and built with
-         * -DCMAKE_BUILD_TYPE=DEBUG instead of =RELEASE */
-        /* | LLL_INFO */ /* | LLL_PARSER */ /* | LLL_HEADER */
-        /* | LLL_EXT */ /* | LLL_CLIENT */  /* | LLL_LATENCY */
-        /* | LLL_DEBUG */;
+    const char *url = "ws://127.0.0.1:4444/";
+    struct ev_loop *loop = EV_DEFAULT;
+    struct ev_signal signal_watcher;
+    int ping_interval = 10; /* second */
+    struct uwsc_client *cl;
 
-    lws_set_log_level(logs, NULL);
-    lwsl_user("LWS minimal ws client echo + permessage-deflate + multifragment bulk message\n");
-    lwsl_user("   lws-minimal-ws-client-echo [-n (no exts)] [-u url] [-p port] [-o (once)]\n");
-
-    options |= 1;
-
-    // if (lws_cmdline_option(argc, argv, "--ssl"))
-    // options |= 2;
-
-    // if ((p = lws_cmdline_option(argc, argv, "-s")))
-    // ads = p;
-
-    // if ((p = lws_cmdline_option(argc, argv, "-i")))
-    // iface = p;
-
-    lwsl_user("options %d, ads %s\n", options, ads);
-
-    memset(&info, 0, sizeof info); /* otherwise uninitialized garbage */
-    info.port = CONTEXT_PORT_NO_LISTEN;
-    info.protocols = protocols;
-    info.pvo = &pvo;
-    // if (!lws_cmdline_option(argc, argv, "-n"))
-    //    info.extensions = extensions;
-    info.pt_serv_buf_size = 32 * 1024;
-    info.options = LWS_SERVER_OPTION_DO_SSL_GLOBAL_INIT | LWS_SERVER_OPTION_VALIDATE_UTF8;
-    /*
-     * since we know this lws context is only ever going to be used with
-     * one client wsis / fds / sockets at a time, let lws know it doesn't
-     * have to use the default allocations for fd tables up to ulimit -n.
-     * It will just allocate for 1 internal and 1 (+ 1 http2 nwsi) that we
-     * will use.
-     */
-    info.fd_limit_per_thread = 1 + 1 + 1;
-
-    // if (lws_cmdline_option(argc, argv, "--libuv"))
-    info.options |= LWS_SERVER_OPTION_LIBUV;
-    // else
-    //    signal(SIGINT, sigint_handler);
-
-    context = lws_create_context(&info);
-    if (!context) {
-        lwsl_err("lws init failed\n");
+    cl = uwsc_new(loop, url, ping_interval, NULL);
+    if (!cl) {
+        printf("Can not connect");
         return NULL;
     }
 
-    while (!lws_service(context, 0) && !interrupted)
-        ;
+    uwsc_log_info("Start connect...\n");
 
-    lws_context_destroy(context);
+    cl->onopen = uwsc_onopen;
+    cl->onmessage = uwsc_onmessage;
+    cl->onerror = uwsc_onerror;
+    cl->onclose = uwsc_onclose;
 
-    n = (options & 1) ? interrupted != 2 : interrupted == 3;
-    lwsl_user("Completed %d %s\n", interrupted, !n ? "OK" : "failed");
+    ev_signal_init(&signal_watcher, signal_cb, SIGINT);
+    ev_signal_start(loop, &signal_watcher);
+
+    ev_run(loop, 0);
+
+    free(cl);
 
     return NULL;
 }
