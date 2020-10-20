@@ -1,8 +1,25 @@
 #include "libobsws.h"
-#include "libuwsc/uwsc.h"
-#include <json-glib/json-glib.h>
+#include "wic.h"
+#include "log.h"
 
 static gpointer obs_ws_main(gpointer user_data);
+static int uwsc_message_id();
+static void ws_send(struct wic_inst *inst, int message_id, GHashTable *map,
+                    result_callback callback, gpointer user_data);
+static void ws_send_command(struct wic_inst *inst, const gchar *command, result_callback callback,
+                            gpointer user_data);
+static void ws_emit(const char *event, JsonObject *object);
+static void on_open_handler(struct wic_inst *inst);
+static bool on_message_handler(struct wic_inst *inst, enum wic_encoding encoding, bool fin,
+                               const char *data, uint16_t size);
+static void on_close_handler(struct wic_inst *inst, uint16_t code, const char *reason,
+                             uint16_t size);
+static void on_close_transport_handler(struct wic_inst *inst);
+static void on_send_handler(struct wic_inst *inst, const void *data, size_t size,
+                            enum wic_buffer type);
+static void on_handshake_failure_handler(struct wic_inst *inst, enum wic_handshake_failure reason);
+static void *on_buffer_handler(struct wic_inst *inst, size_t min_size, enum wic_buffer type,
+                               size_t *max_size);
 
 typedef struct _ObsWsPrivate {
     char *profile;
@@ -115,6 +132,8 @@ static void obs_ws_class_init(ObsWsClass *klass) {
     klass->heartbeat = obs_ws_heartbeat;
 
     klass->thread = g_thread_new("obs", obs_ws_main, klass);
+    klass->callbacks = g_hash_table_new(g_str_hash, g_str_equal);
+    klass->callbacks_data = g_hash_table_new(g_str_hash, g_str_equal);
 
     obj_properties[PROFILE] =
         g_param_spec_string("profile", "Profile", "Profile.", NULL, G_PARAM_READWRITE);
@@ -145,21 +164,24 @@ static void obs_ws_heartbeat(const gchar *profile, const gchar *scene) {
 
 ObsWs *obs_ws_new() { return g_object_new(OBS_TYPE_WS, NULL); }
 
-GList *obs_ws_get_scenes(ObsWs *self) {
+GList *obs_ws_get_scenes(ObsWs *self, result_callback callback, gpointer user_data) {
     ObsWsClass *klass = OBS_WS_GET_CLASS(self);
 
-    // {"request-type":"GetSceneList","message-id":"4"}
-    // struct vhd_minimal_client_echo *vhd = klass->vhd;
+    ws_send_command(klass->inst, "GetSceneList", callback, user_data);
 
-    // if (!vhd->established) {
-    // printf("Not connected\n");
-    // return NULL;
-    // }
-
-    // lws_ring_insert()
     return NULL;
 }
 
+void obs_ws_set_current_scene(ObsWs *self, const char *scene) {
+    ObsWsClass *klass = OBS_WS_GET_CLASS(self);
+
+    GHashTable *map = g_hash_table_new(g_str_hash, g_str_equal);
+    g_hash_table_insert(map, "request-type", g_strdup("SetCurrentScene"));
+    g_hash_table_insert(map, "scene-name", g_strdup(scene));
+
+    int message_id = uwsc_message_id();
+    ws_send(klass->inst, message_id, map, NULL, NULL);
+}
 // Private
 
 const gchar *json_object_get_string_value(JsonObject *json, const gchar *key) {
@@ -179,51 +201,44 @@ static int uwsc_message_id() {
     return next_message_id++;
 }
 
-static void uwsc_onmessage(struct uwsc_client *cl, void *data, size_t len, bool binary) {
-    // printf("Recv:");
+static void ws_emit(const char *event, JsonObject *object) {
+    GHashTableIter iter;
 
-    if (!binary) {
-        JsonParser *parser = json_parser_new();
+    gpointer key, value;
+    const char event_to_emit[50];
 
-        if (json_parser_load_from_data(parser, (const gchar *)data, len, NULL)) {
-            JsonNode *root = json_parser_get_root(parser);
-            if (JSON_NODE_HOLDS_OBJECT(root)) {
-                JsonObject *message = json_node_get_object(root);
-                const gchar *updateType = json_object_get_string_value(message, "update-type");
-                const gchar *currentProfile =
-                    json_object_get_string_value(message, "current-profile");
-                const gchar *currentScene = json_object_get_string_value(message, "current-scene");
-                // const gchar *updateType = json_object_get_boolean_value(message,
-                // "recording"); const gchar *updateType = json_object_get_string_value(message,
-                // "streaming");
+    const char *message_id = json_object_get_string_value(object, "message-id");
+    if (message_id == NULL) {
+        g_sprintf(event_to_emit, "%s", event);
+    } else {
+        g_sprintf(event_to_emit, "emit:message:%s", message_id);
+    }
 
-                if (g_strcmp0(updateType, "Heartbeat") == 0) {
-                    printf("%s\n", currentScene);
-                    klass->heartbeat(currentProfile, currentScene);
-                }
+    g_hash_table_iter_init(&iter, klass->callbacks);
+    while (g_hash_table_iter_next(&iter, &key, &value)) {
+        if (g_strcmp0(event_to_emit, key) == 0) {
+            printf("got callback for %s ... calling\n", event_to_emit);
+            result_callback callback = (result_callback)value;
+            if (callback != NULL) {
+                gpointer user_data;
+                g_hash_table_lookup_extended(klass->callbacks_data, event_to_emit, NULL,
+                                             &user_data);
+                printf("got data for %s ... %p\n", event_to_emit, user_data);
+                callback(object, user_data);
             }
-        } else {
-            // TODO: We may receive multiple packets for the same message
-            // We need a buffer and check for lws_is_final_fragment and lws_is_first_fragment
-            // printf("Cant parse\n");
-            // printf("%s\n", (const gchar *)in);
         }
-        g_object_unref(parser);
-        // printf("[%.*s]\n", (int)len, (char *)data);
     }
 }
 
-static void uwsc_onerror(struct uwsc_client *cl, int err, const char *msg) {
-    uwsc_log_err("onerror:%d: %s\n", err, msg);
-    ev_break(cl->loop, EVBREAK_ALL);
+static ws_emit_register_callback(const char *callbackId, result_callback callback,
+                                 gpointer user_data) {
+    printf("Registering callback for %s with data %p\n", callbackId, user_data);
+    printf("%d\n", g_hash_table_insert(klass->callbacks, g_strdup(callbackId), callback));
+    printf("%d\n", g_hash_table_insert(klass->callbacks_data, g_strdup(callbackId), user_data));
 }
 
-static void uwsc_onclose(struct uwsc_client *cl, int code, const char *reason) {
-    uwsc_log_err("onclose:%d: %s\n", code, reason);
-    ev_break(cl->loop, EVBREAK_ALL);
-}
-
-static void uwsc_send(struct uwsc_client *cl, int message_id, GHashTable *map) {
+static void ws_send(struct wic_inst *inst, int message_id, GHashTable *map,
+                    result_callback callback, gpointer user_data) {
     char message[10];
     g_sprintf(message, "%d", message_id);
     g_hash_table_insert(map, "message-id", g_strdup(message));
@@ -250,66 +265,184 @@ static void uwsc_send(struct uwsc_client *cl, int message_id, GHashTable *map) {
     gsize len;
     gchar *data = json_generator_to_data(json, &len);
     printf(">> %s\n", data);
-    cl->send(cl, (const void *)data, (size_t)len, 0);
+
+    char callback_id[50];
+    g_sprintf(callback_id, "emit:message:%d", message_id);
+
+    ws_emit_register_callback(callback_id, callback, user_data);
+    wic_send_text(inst, true, data, len);
 
     g_free(data);
     g_object_unref(json);
 }
 
-static void uwsc_onopen(struct uwsc_client *cl) {
-    // static struct ev_io stdin_watcher;
-
-    uwsc_log_info("onopen\n");
-
+static void ws_send_command(struct wic_inst *inst, const gchar *command, result_callback callback,
+                            gpointer user_data) {
     GHashTable *map = g_hash_table_new(g_str_hash, g_str_equal);
-    // {"enable":true,"request-type":"SetHeartbeat","message-id":"1"}
-    // {"enable":true,"request-type":"SetHeartbeat","message-id":"2"}
-    // g_hash_table_insert(map, "enable", "true");
-    // g_hash_table_insert(map, "request-type", "SetHeartbeat");
-    // g_hash_table_insert(map, "message-id", message);
-
-    g_hash_table_insert(map, "request-type", "GetAuthRequired");
+    g_hash_table_insert(map, "request-type", g_strdup(command));
 
     int message_id = uwsc_message_id();
-    uwsc_send(cl, message_id, map);
+    ws_send(inst, message_id, map, callback, user_data);
 }
 
-static void signal_cb(struct ev_loop *loop, ev_signal *w, int revents) {
-    if (w->signum == SIGINT) {
-        ev_break(loop, EVBREAK_ALL);
-        uwsc_log_info("Normal quit\n");
-    }
-}
+// static void ws_onopen(struct uwsc_client *cl) {
+//     // static struct ev_io stdin_watcher;
+
+//     uwsc_log_info("onopen\n");
+
+//     GHashTable *map = g_hash_table_new(g_str_hash, g_str_equal);
+//     // {"enable":true,"request-type":"SetHeartbeat","message-id":"1"}
+//     // {"enable":true,"request-type":"SetHeartbeat","message-id":"2"}
+//     // g_hash_table_insert(map, "enable", "true");
+//     // g_hash_table_insert(map, "request-type", "SetHeartbeat");
+//     // g_hash_table_insert(map, "message-id", message);
+
+//     g_hash_table_insert(map, "request-type", "GetAuthRequired");
+
+//     int message_id = uwsc_message_id();
+//     uwsc_send(cl, message_id, map);
+// }
+
+// static void signal_cb(struct ev_loop *loop, ev_signal *w, int revents) {
+//     if (w->signum == SIGINT) {
+//         ev_break(loop, EVBREAK_ALL);
+//         uwsc_log_info("Normal quit\n");
+//     }
+// }
 
 static gpointer obs_ws_main(gpointer user_data) {
     // Save Global Thread Klass to use in the Protocol
     klass = (ObsWsClass *)user_data;
 
-    const char *url = "ws://127.0.0.1:4444/";
-    struct ev_loop *loop = EV_DEFAULT;
-    struct ev_signal signal_watcher;
-    int ping_interval = 10; /* second */
-    struct uwsc_client *cl;
+    int s, redirects = 3;
+    static uint8_t rx[1000];
+    static char url[1000] = "ws://127.0.0.1:4444/";
+    struct wic_inst inst;
+    struct wic_init_arg arg = {0};
 
-    cl = uwsc_new(loop, url, ping_interval, NULL);
-    if (!cl) {
-        printf("Can not connect");
-        return NULL;
+    arg.rx = rx;
+    arg.rx_max = sizeof(rx);
+    arg.on_send = on_send_handler;
+    arg.on_buffer = on_buffer_handler;
+    arg.on_message = on_message_handler;
+    arg.on_open = on_open_handler;
+    arg.on_close = on_close_handler;
+    arg.on_close_transport = on_close_transport_handler;
+    arg.on_handshake_failure = on_handshake_failure_handler;
+    arg.app = &s;
+    arg.url = url;
+    arg.role = WIC_ROLE_CLIENT;
+
+    for (;;) {
+
+        if (!wic_init(&inst, &arg)) {
+
+            exit(EXIT_FAILURE);
+        };
+
+        struct wic_header user_agent = {.name = "User-Agent", .value = "wic"};
+
+        (void)wic_set_header(&inst, &user_agent);
+
+        if (transport_open_client(wic_get_url_schema(&inst), wic_get_url_hostname(&inst),
+                                  wic_get_url_port(&inst), &s)) {
+
+            if (wic_start(&inst) == WIC_STATUS_SUCCESS) {
+                klass->inst = &inst;
+                while (transport_recv(s, &inst))
+                    ;
+            } else {
+
+                transport_close(&s);
+            }
+        }
+
+        if (wic_get_redirect_url(&inst) && redirects) {
+
+            redirects--;
+            strcpy(url, wic_get_redirect_url(&inst));
+        } else {
+
+            break;
+        }
     }
 
-    uwsc_log_info("Start connect...\n");
-
-    cl->onopen = uwsc_onopen;
-    cl->onmessage = uwsc_onmessage;
-    cl->onerror = uwsc_onerror;
-    cl->onclose = uwsc_onclose;
-
-    ev_signal_init(&signal_watcher, signal_cb, SIGINT);
-    ev_signal_start(loop, &signal_watcher);
-
-    ev_run(loop, 0);
-
-    free(cl);
-
     return NULL;
+}
+
+GString *message_buffer = NULL;
+static bool on_message_handler(struct wic_inst *inst, enum wic_encoding encoding, bool fin,
+                               const char *data, uint16_t size) {
+
+    if (message_buffer == NULL) {
+        message_buffer = g_string_new(data);
+    } else {
+        g_string_append_len(message_buffer, data, size);
+    }
+
+    if (fin) {
+        JsonParser *parser = json_parser_new();
+        if (json_parser_load_from_data(parser, (const gchar *)message_buffer->str,
+                                       message_buffer->len, NULL)) {
+            JsonNode *root = json_parser_get_root(parser);
+            if (JSON_NODE_HOLDS_OBJECT(root)) {
+                JsonObject *message = json_node_get_object(root);
+                ws_emit("", message);
+            }
+        }
+
+        g_string_free(message_buffer, TRUE);
+        message_buffer = NULL;
+    }
+
+    return true;
+}
+
+static void on_handshake_failure_handler(struct wic_inst *inst, enum wic_handshake_failure reason) {
+    LOG("websocket handshake failed for reason %d", reason);
+}
+
+void on_get_auth_result(JsonObject *object, gpointer user_data) {
+    // TODO: Check if we need to login
+}
+
+static void on_open_handler(struct wic_inst *inst) {
+    const char *name, *value;
+
+    LOG("websocket is open");
+
+    LOG("received handshake:");
+
+    for (value = wic_get_next_header(inst, &name); value;
+         value = wic_get_next_header(inst, &name)) {
+
+        LOG("%s: %s", name, value);
+    }
+
+    ws_send_command(inst, "GetAuthRequired", on_get_auth_result, NULL);
+}
+
+static void on_close_handler(struct wic_inst *inst, uint16_t code, const char *reason,
+                             uint16_t size) {
+    LOG("websocket closed for reason %u", code);
+}
+
+static void on_close_transport_handler(struct wic_inst *inst) {
+    transport_close((int *)wic_get_app(inst));
+}
+
+static void on_send_handler(struct wic_inst *inst, const void *data, size_t size,
+                            enum wic_buffer type) {
+    LOG("sending buffer type %d", type);
+
+    transport_write(*(int *)wic_get_app(inst), data, size);
+}
+
+static void *on_buffer_handler(struct wic_inst *inst, size_t min_size, enum wic_buffer type,
+                               size_t *max_size) {
+    static uint8_t tx[1000U];
+
+    *max_size = sizeof(tx);
+
+    return (min_size <= sizeof(tx)) ? tx : NULL;
 }

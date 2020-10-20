@@ -1,4 +1,5 @@
 #include <gtk/gtk.h>
+#include <json-glib/json-glib.h>
 
 #ifndef __OBS_WS_H__
 #define __OBS_WS_H__
@@ -8,6 +9,8 @@ G_BEGIN_DECLS
 #define OBS_TYPE_WS obs_ws_get_type()
 G_DECLARE_DERIVABLE_TYPE(ObsWs, obs_ws, OBS, WS, GObject)
 
+typedef void (*result_callback)(JsonObject *, gpointer user_data);
+
 struct _ObsWsClass {
     GObjectClass parent;
 
@@ -15,7 +18,9 @@ struct _ObsWsClass {
     void (*heartbeat)(const gchar *profile, const gchar *scene);
 
     GThread *thread;
-    // struct vhd_minimal_client_echo *vhd;
+    struct wic_inst *inst;
+    GHashTable *callbacks;
+    GHashTable *callbacks_data;
 
     /* Padding to allow adding up to 12 new virtual functions without
      * breaking ABI. */
@@ -27,7 +32,8 @@ struct _ObsWsClass {
  */
 GType obs_ws_get_type();
 ObsWs *obs_ws_new();
-GList *obs_ws_get_scenes(ObsWs *);
+GList *obs_ws_get_scenes(ObsWs *, result_callback callback, gpointer user_data);
+void obs_ws_set_current_scene(ObsWs *, const char *scene);
 
 G_END_DECLS
 
