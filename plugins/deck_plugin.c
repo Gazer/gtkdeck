@@ -469,6 +469,10 @@ void deck_plugin_save(DeckPlugin *self, int position, GKeyFile *key_file) {
     if (priv->preview_image_active != NULL) {
         g_key_file_set_surface(key_file, group, "preview_image_active", priv->preview_image_active);
     }
+    if (priv->label != NULL) {
+        printf("Saving label %s\n", priv->label);
+        g_key_file_set_string(key_file, group, "label", priv->label);
+    }
 
     priv->action->save(self, group, key_file);
 }
@@ -477,6 +481,7 @@ DeckPlugin *deck_plugin_load(GKeyFile *key_file, char *group) {
     GList *list = deck_plugin_list();
 
     g_autofree char *name = g_key_file_get_string(key_file, group, "name", NULL);
+    g_autofree char *label = g_key_file_get_string(key_file, group, "label", NULL);
     g_autofree char *action_name = g_key_file_get_string(key_file, group, "action_name", NULL);
     int code = g_key_file_get_integer(key_file, group, "code", NULL);
 
@@ -493,6 +498,10 @@ DeckPlugin *deck_plugin_load(GKeyFile *key_file, char *group) {
 
             DeckPlugin *new_plugin = deck_plugin_new_with_action_code(plugin, code);
             DeckPluginPrivate *new_priv = deck_plugin_get_instance_private(new_plugin);
+
+            if (label != NULL) {
+                new_priv->label = g_strdup(label);
+            }
 
             if (g_key_file_has_key(key_file, group, "preview_image_data", NULL)) {
                 new_priv->preview_image = g_key_file_get_surface(key_file, group, "preview_image");
