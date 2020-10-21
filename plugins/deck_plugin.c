@@ -2,6 +2,7 @@
 #include <gdk-pixbuf/gdk-pixbuf.h>
 #include <glib-object.h>
 #include <libusb-1.0/libusb.h>
+#include <pango/pangocairo.h>
 
 // Plugins
 #include "test_plugin.h"
@@ -182,6 +183,7 @@ static void deck_plugin_set_current_state(DeckPlugin *self) {
     }
 
     if (priv->label != NULL && strlen(priv->label) > 0) {
+        int width, height;
         cairo_surface_t *new_surface =
             cairo_surface_create_similar(surface, CAIRO_CONTENT_COLOR_ALPHA, 72, 72);
 
@@ -190,19 +192,23 @@ static void deck_plugin_set_current_state(DeckPlugin *self) {
         cairo_set_source_surface(cr, surface, 0, 0);
         cairo_paint(cr);
 
-        // Draw the text
-        cairo_select_font_face(cr, "sans-serif", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL);
-        cairo_set_font_size(cr, 12);
+        /* Create a PangoLayout, set the font and text */
+        PangoLayout *layout = pango_cairo_create_layout(cr);
 
-        cairo_text_extents_t extents;
-        cairo_text_extents(cr, priv->label, &extents);
+        pango_layout_set_text(layout, priv->label, -1);
+        PangoFontDescription *desc = pango_font_description_from_string("Sans Bold 12");
+        pango_layout_set_font_description(layout, desc);
+        pango_font_description_free(desc);
 
         cairo_save(cr);
-        cairo_move_to(cr, 72 / 2 - extents.width / 2, 72 - extents.height);
         cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
-        cairo_show_text(cr, priv->label);
-        cairo_stroke(cr);
+        pango_cairo_update_layout(cr, layout);
+        pango_layout_get_size(layout, &width, &height);
+        cairo_move_to(cr, 72 / 2 - width / PANGO_SCALE / 2, 72 - height / PANGO_SCALE);
+        pango_cairo_show_layout(cr, layout);
         cairo_restore(cr);
+
+        // Cleanup
         cairo_destroy(cr);
 
         surface = new_surface;
