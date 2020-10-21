@@ -12,6 +12,8 @@ void text_config(DeckPlugin *self, GtkBox *parent) {
     gchar *url;
     g_object_get(G_OBJECT(self), "url", &url, NULL);
 
+    GtkBox *hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+
     GtkWidget *label = gtk_label_new("Text");
     // GTK_INPUT_PURPOSE_URL
     // GTK_INPUT_HINT_NO_SPELLCHECK
@@ -21,8 +23,10 @@ void text_config(DeckPlugin *self, GtkBox *parent) {
     }
     g_signal_connect(G_OBJECT(entry), "changed", G_CALLBACK(text_changed), self);
 
-    gtk_box_pack_start(parent, label, TRUE, FALSE, 5);
-    gtk_box_pack_start(parent, entry, TRUE, FALSE, 5);
+    gtk_box_pack_start(hbox, label, FALSE, TRUE, 5);
+    gtk_box_pack_start(hbox, entry, TRUE, TRUE, 5);
+
+    gtk_box_pack_start(parent, GTK_WIDGET(hbox), TRUE, FALSE, 5);
 }
 
 void text_exec(DeckPlugin *self) {

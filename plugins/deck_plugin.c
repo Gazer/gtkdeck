@@ -13,6 +13,8 @@ static GList *available_plugins = NULL;
 typedef struct _DeckPluginPrivate {
     DeckPluginAction *action;
     char *name;
+
+    char *label;
     cairo_surface_t *surface;
     cairo_surface_t *preview_image;
     cairo_surface_t *preview_image_active;
@@ -21,7 +23,7 @@ typedef struct _DeckPluginPrivate {
 
 G_DEFINE_TYPE_WITH_PRIVATE(DeckPlugin, deck_plugin, G_TYPE_OBJECT)
 
-typedef enum { PREVIEW = 1, NAME, ACTION, N_PROPERTIES } DeckPluginProperty;
+typedef enum { PREVIEW = 1, NAME, ACTION, LABEL, N_PROPERTIES } DeckPluginProperty;
 
 static GParamSpec *obj_properties[N_PROPERTIES] = {
     NULL,
@@ -67,6 +69,14 @@ static void deck_plugin_set_property(GObject *object, guint property_id, const G
         priv->name = g_strdup(g_value_get_string(value));
         break;
     }
+    case LABEL: {
+        if (priv->label != NULL) {
+            g_free(priv->label);
+        }
+        priv->label = g_value_dup_string(value);
+        deck_plugin_reset(self);
+        break;
+    }
     case PREVIEW: {
         priv->surface = g_value_get_pointer(value);
         break;
@@ -89,6 +99,10 @@ static void deck_plugin_get_property(GObject *object, guint property_id, GValue 
         g_value_set_pointer(value, priv->action);
         break;
     }
+    case LABEL: {
+        g_value_set_string(value, priv->label);
+        break;
+    }
     default:
         /* We don't have any other property... */
         G_OBJECT_WARN_INVALID_PROPERTY_ID(object, property_id, pspec);
@@ -101,6 +115,7 @@ static void deck_plugin_init(DeckPlugin *self) {
     priv->name = NULL;
     priv->preview_image = NULL;
     priv->preview_image_active = NULL;
+    priv->label = NULL;
 }
 
 static void deck_plugin_finalize(GObject *object) {
@@ -115,6 +130,9 @@ static void deck_plugin_finalize(GObject *object) {
     }
     if (priv->name != NULL) {
         g_free(priv->name);
+    }
+    if (priv->label != NULL) {
+        g_free(priv->label);
     }
 
     G_OBJECT_CLASS(deck_plugin_parent_class)->finalize(object);
@@ -144,6 +162,9 @@ static void deck_plugin_class_init(DeckPluginClass *klass) {
     obj_properties[NAME] =
         g_param_spec_string("name", "Name", "Name of the plugin.", NULL, G_PARAM_READWRITE);
 
+    obj_properties[LABEL] =
+        g_param_spec_string("label", "Label", "Label of the plugin.", NULL, G_PARAM_READWRITE);
+
     obj_properties[PREVIEW] =
         g_param_spec_pointer("preview", "Preview", "Preview image to show.", G_PARAM_READWRITE);
 
@@ -152,12 +173,42 @@ static void deck_plugin_class_init(DeckPluginClass *klass) {
 
 static void deck_plugin_set_current_state(DeckPlugin *self) {
     DeckPluginPrivate *priv = deck_plugin_get_instance_private(self);
+    cairo_surface_t *surface;
 
     if (priv->state == BUTTON_STATE_SELECTED) {
-        g_object_set(G_OBJECT(self), "preview", priv->preview_image_active, NULL);
+        surface = priv->preview_image_active;
     } else {
-        g_object_set(G_OBJECT(self), "preview", priv->preview_image, NULL);
+        surface = priv->preview_image, NULL;
     }
+
+    if (priv->label != NULL && strlen(priv->label) > 0) {
+        cairo_surface_t *new_surface =
+            cairo_surface_create_similar(surface, CAIRO_CONTENT_COLOR_ALPHA, 72, 72);
+
+        cairo_t *cr = cairo_create(new_surface);
+        // Paint the base image
+        cairo_set_source_surface(cr, surface, 0, 0);
+        cairo_paint(cr);
+
+        // Draw the text
+        cairo_select_font_face(cr, "sans-serif", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL);
+        cairo_set_font_size(cr, 12);
+
+        cairo_text_extents_t extents;
+        cairo_text_extents(cr, priv->label, &extents);
+
+        cairo_save(cr);
+        cairo_move_to(cr, 72 / 2 - extents.width / 2, 72 - extents.height);
+        cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
+        cairo_show_text(cr, priv->label);
+        cairo_stroke(cr);
+        cairo_restore(cr);
+        cairo_destroy(cr);
+
+        surface = new_surface;
+    }
+
+    g_object_set(G_OBJECT(self), "preview", surface, NULL);
 }
 
 GList *deck_plugin_list() {
@@ -235,8 +286,33 @@ void deck_plugin_exec(DeckPlugin *self) {
     g_thread_pool_push(klass->pool, self, NULL);
 }
 
+void label_text_changed(GtkEditable *editable, gpointer user_data) {
+    DeckPlugin *self = DECK_PLUGIN(user_data);
+    char *text = gtk_editable_get_chars(editable, 0, -1);
+    g_object_set(G_OBJECT(self), "label", text, NULL);
+    g_free(text);
+}
+
 void deck_plugin_get_config_widget(DeckPlugin *self, GtkBox *parent) {
     DeckPluginPrivate *priv = deck_plugin_get_instance_private(self);
+
+    gchar *text;
+    g_object_get(G_OBJECT(self), "label", &text, NULL);
+
+    GtkBox *hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+    GtkWidget *label = gtk_label_new("Label");
+    GtkWidget *entry = gtk_entry_new();
+    if (text != NULL) {
+        gtk_entry_set_text(GTK_ENTRY(entry), text);
+    }
+
+    g_signal_connect(G_OBJECT(entry), "changed", G_CALLBACK(label_text_changed), self);
+
+    gtk_box_pack_start(GTK_BOX(hbox), label, FALSE, TRUE, 5);
+    gtk_box_pack_start(GTK_BOX(hbox), entry, TRUE, TRUE, 5);
+
+    gtk_box_pack_start(parent, GTK_WIDGET(hbox), TRUE, FALSE, 5);
+
     priv->action->config(self, parent);
 }
 
