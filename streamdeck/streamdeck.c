@@ -13,6 +13,7 @@
 
 void stream_deck_init_original_v2(StreamDeck *deck);
 void stream_deck_init_mini(StreamDeck *deck);
+static GString *read_feature_string(hid_device *handle, int code, int size, int read_offset);
 
 typedef struct _StreamDeckPrivate {
     hid_device *handle;
@@ -56,6 +57,11 @@ static GParamSpec *obj_properties[N_PROPERTIES] = {
 
 static int signals[1];
 
+#include "stream_deck_init_original.c"
+#include "stream_deck_init_original_v2.c"
+#include "stream_deck_init_mini.c"
+#include "stream_deck_init_xl.c"
+
 static void stream_deck_set_property(GObject *object, guint property_id, const GValue *value,
                                      GParamSpec *pspec) {
     StreamDeck *self = STREAM_DECK(object);
@@ -77,6 +83,10 @@ static void stream_deck_set_property(GObject *object, guint property_id, const G
             stream_deck_init_original_v2(self);
         } else if (type == STREAM_DECK_MINI) {
             stream_deck_init_mini(self);
+        } else if (type == STREAM_DECK_ORIGINAL) {
+            stream_deck_init_original(self);
+        } else if (type == STREAM_DECK_XL) {
+            stream_deck_init_xl(self);
         }
         break;
     }
@@ -236,9 +246,9 @@ GList *stream_deck_list() {
         handle = hid_open(iter->vendor_id, iter->product_id, NULL);
 
         switch (iter->product_id) {
-        // case 0x0060:
-        //     type = STREAM_DECK_ORIGINAL;
-        //     break;
+        case 0x0060:
+            type = STREAM_DECK_ORIGINAL;
+            break;
         case 0x006d:
             type = STREAM_DECK_ORIGINAL_V2;
             break;
@@ -394,7 +404,7 @@ void stream_deck_set_image_from_surface(StreamDeck *self, int key, cairo_surface
 
 // Private Initializers
 
-GString *read_feature_string(hid_device *handle, int code, int size, int read_offset) {
+static GString *read_feature_string(hid_device *handle, int code, int size, int read_offset) {
     GString *value = g_string_new(NULL);
     unsigned char buf[size];
     buf[0] = code;
@@ -403,143 +413,4 @@ GString *read_feature_string(hid_device *handle, int code, int size, int read_of
     g_string_assign(value, (const char *)(buf + read_offset));
 
     return value;
-}
-// ORIGINAL V2 SPECIFIC FUNCTIONS
-
-unsigned char original_reset_bytes[] = {
-    0x03, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
-
-GBytes *original_v2_reset_bytes(StreamDeck *deck) {
-    return g_bytes_new_static(original_reset_bytes, 32);
-}
-
-GString *original_v2_get_firmware_version(StreamDeck *self) {
-    StreamDeckPrivate *priv = stream_deck_get_instance_private(self);
-    return read_feature_string(priv->handle, 0x05, 32, 6);
-}
-
-GString *original_v2_get_serial_number(StreamDeck *self) {
-    StreamDeckPrivate *priv = stream_deck_get_instance_private(self);
-    return read_feature_string(priv->handle, 0x06, 32, 2);
-}
-
-GBytes *original_v2_brightness_command(StreamDeck *self, int percentage) {
-    unsigned char *bytes = g_malloc0(sizeof(unsigned char) * 32);
-
-    bytes[0] = 0x03;
-    bytes[1] = 0x08;
-    bytes[2] = percentage;
-
-    return g_bytes_new(bytes, 32);
-}
-
-void original_v2_write_image_header(unsigned char *packet, int key, int this_length,
-                                    int bytes_remaining, int page_number) {
-    packet[0] = 0x02;
-    packet[1] = 0x07;
-    packet[2] = key;
-    packet[3] = this_length == bytes_remaining ? 1 : 0;
-    packet[4] = this_length & 0xFF;
-    packet[5] = this_length >> 8;
-    packet[6] = page_number & 0xFF;
-    packet[7] = page_number >> 8;
-}
-
-void stream_deck_init_original_v2(StreamDeck *deck) {
-    StreamDeckPrivate *priv = stream_deck_get_instance_private(deck);
-
-    priv->rows = 3;
-    priv->columns = 5;
-    priv->icon_size = 72;
-    priv->key_direction = LTR;
-    priv->key_data_offset = 4;
-    priv->key_flip_h = 1;
-    priv->key_flip_v = 1;
-    priv->key_rotation = 0;
-    priv->key_image_format = "jpeg";
-    priv->key_read_header = 4;
-    priv->max_packet_size = 1024;
-    priv->packet_header_size = 8;
-    priv->reset_command = original_v2_reset_bytes;
-    priv->brightness_command = original_v2_brightness_command;
-    priv->get_firmware_version = original_v2_get_firmware_version;
-    priv->get_serial_number = original_v2_get_serial_number;
-    priv->write_image_header = original_v2_write_image_header;
-
-    g_autofree char *payload = g_malloc0(priv->max_packet_size);
-    payload[0] = 0x02;
-    hid_write(priv->handle, (const unsigned char *)payload, priv->max_packet_size);
-}
-
-// MINI SPECIFIC FUNCTIONS
-
-unsigned char mini_reset_bytes[] = {0x0B, 0x63, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                                    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
-
-GBytes *mini_reset_command(StreamDeck *deck) { return g_bytes_new_static(mini_reset_bytes, 17); }
-
-GBytes *mini_brightness_command(StreamDeck *self, int percentage) {
-    unsigned char *bytes = g_malloc0(sizeof(unsigned char) * 17);
-
-    bytes[0] = 0x05;
-    bytes[1] = 0x55;
-    bytes[2] = 0xaa;
-    bytes[3] = 0xd1;
-    bytes[4] = 0x01;
-    bytes[5] = percentage;
-
-    return g_bytes_new(bytes, 17);
-}
-
-GString *mini_get_firmware_version(StreamDeck *self) {
-    StreamDeckPrivate *priv = stream_deck_get_instance_private(self);
-    return read_feature_string(priv->handle, 0x04, 17, 5);
-}
-
-GString *mini_get_serial_number(StreamDeck *self) {
-    StreamDeckPrivate *priv = stream_deck_get_instance_private(self);
-    return read_feature_string(priv->handle, 0x03, 17, 5);
-}
-
-void mini_write_image_header(unsigned char *packet, int key, int this_length, int bytes_remaining,
-                             int page_number) {
-    packet[0] = 0x02;
-    packet[1] = 0x01;
-    packet[2] = page_number;
-    packet[3] = 0;
-    packet[4] = this_length == bytes_remaining ? 1 : 0;
-    packet[5] = key + 1;
-    packet[6] = 0;
-    packet[7] = 0;
-    packet[8] = 0;
-    packet[9] = 0;
-    packet[10] = 0;
-    packet[11] = 0;
-    packet[12] = 0;
-    packet[13] = 0;
-    packet[14] = 0;
-    packet[15] = 0;
-}
-
-void stream_deck_init_mini(StreamDeck *deck) {
-    StreamDeckPrivate *priv = stream_deck_get_instance_private(deck);
-
-    priv->rows = 2;
-    priv->columns = 3;
-    priv->icon_size = 80;
-    priv->key_direction = LTR;
-    priv->key_data_offset = 4;
-    priv->key_flip_h = 0;
-    priv->key_flip_v = 1;
-    priv->key_rotation = GDK_PIXBUF_ROTATE_COUNTERCLOCKWISE;
-    priv->key_image_format = "bmp";
-    priv->key_read_header = 1;
-    priv->max_packet_size = 1024;
-    priv->packet_header_size = 16;
-    priv->reset_command = mini_reset_command;
-    priv->brightness_command = mini_brightness_command;
-    priv->get_firmware_version = mini_get_firmware_version;
-    priv->get_serial_number = mini_get_serial_number;
-    priv->write_image_header = mini_write_image_header;
 }

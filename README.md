@@ -13,6 +13,10 @@ Currently the following StreamDeck product variants are supported:
 * StreamDeck Original V2
 * StreamDeck Mini
 
+Also support but not tested yet:
+* StreamDeck Original
+* StreamDeck XL
+
 ## Plugins
 
 A plugin arquitecture is being created and is still in its early stages.
@@ -26,6 +30,11 @@ A dummy plugin to test the code. You can set a color and when you click the butt
 * Open URL: Set an url and when the button is tap open the url in the default browser
 * Write Text: Write a text in the current focused window.
 
+### OBS Plugin
+
+Work In Progress!!. You need to install and enable OBS Websocket plugin in OBS Studio.
+
+* Chance Scene
 
 ## How to install
 
