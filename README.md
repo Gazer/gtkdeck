@@ -56,7 +56,7 @@ Unplug and replug the device and it should be usable
 ### Install dependencies
 
 ```
-$> apt install xvkbd meson libhidapi-dev libhidapi-libusb0 libgtk-3-dev libev-dev libjson-glib-dev
+$> apt install xvkbd meson libusb-1.0-0-dev libhidapi-dev libhidapi-libusb0 libgtk-3-dev libev-dev libjson-glib-dev
 ```
 
 ### Compile
