@@ -43,7 +43,7 @@ jobs:
         # queries: ./path/to/local/query, your-org/your-repo/queries@main
 
     - name: Install Deps
-    - run: |
+      run: |
         sudo apt install xvkbd meson libhidapi-dev libhidapi-libusb0 libgtk-3-dev libev-dev libjson-glib-dev
 
     - name: Build
