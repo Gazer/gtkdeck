@@ -34,6 +34,9 @@ GType obs_ws_get_type();
 ObsWs *obs_ws_new();
 GList *obs_ws_get_scenes(ObsWs *, result_callback callback, gpointer user_data);
 void obs_ws_set_current_scene(ObsWs *, const char *scene);
+void obs_ws_register_callback(const char *callbackId, result_callback callback, gpointer user_data);
+
+const gchar *json_object_get_string_value(JsonObject *json, const gchar *key);
 
 G_END_DECLS
 

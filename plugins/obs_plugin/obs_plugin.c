@@ -1,6 +1,7 @@
 #include "obs_plugin.h"
 
 #include "change_scene.h"
+#include "../libobsws/libobsws.h"
 
 DeckPlugin *obs_plugin_clone(DeckPlugin *self, int action);
 DeckPlugin *obs_plugin_clone_with_code(DeckPlugin *self, int code);
@@ -113,9 +114,25 @@ static void obs_plugin_class_init(OBSPluginClass *klass) {
 
 DeckPlugin *obs_plugin_new() { return g_object_new(OBS_TYPE_PLUGIN, "name", "OBSPlugin", NULL); }
 
+static void on_scene_changed(JsonObject *json, gpointer user_data) {
+    OBSPlugin *self = OBS_PLUGIN(user_data);
+    OBSPluginPrivate *priv = obs_plugin_get_instance_private(self);
+    gchar *text = json_object_get_string_value(json, "scene-name");
+
+    if (g_strcmp0(text, priv->scene) == 0) {
+        deck_plugin_set_state(self, BUTTON_STATE_SELECTED);
+    } else {
+        deck_plugin_set_state(self, BUTTON_STATE_NORMAL);
+    }
+}
+
 DeckPlugin *obs_plugin_clone(DeckPlugin *self, int action) {
-    return g_object_new(OBS_TYPE_PLUGIN, "name", "OBSPlugin", "action",
-                        &OBS_PLUGIN_INFO.actions[action], NULL);
+    ObsWs *ws = obs_plugin_new();
+    DeckPlugin *clone = g_object_new(OBS_TYPE_PLUGIN, "name", "OBSPlugin", "action",
+                                     &OBS_PLUGIN_INFO.actions[action], NULL);
+
+    obs_ws_register_callback("SwitchScenes", on_scene_changed, clone);
+    return clone;
 }
 
 DeckPluginInfo *obs_plugin_info(DeckPlugin *self) { return &OBS_PLUGIN_INFO; }

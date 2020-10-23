@@ -82,6 +82,7 @@ void deck_plugin_set_image_from_file(DeckPlugin *self, DeckPluginState mode, cha
 void deck_plugin_set_image_from_resource(DeckPlugin *self, DeckPluginState mode, char *resource);
 void deck_plugin_reset(DeckPlugin *self);
 DeckPluginButtonMode deck_plugin_get_button_mode(DeckPlugin *self);
+void deck_plugin_set_state(DeckPlugin *self, DeckPluginState state);
 
 G_END_DECLS
 

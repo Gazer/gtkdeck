@@ -525,3 +525,10 @@ DeckPluginButtonMode deck_plugin_get_button_mode(DeckPlugin *self) {
 
     return priv->action->mode;
 }
+
+void deck_plugin_set_state(DeckPlugin *self, DeckPluginState state) {
+    DeckPluginPrivate *priv = deck_plugin_get_instance_private(self);
+    priv->state = state;
+
+    deck_plugin_reset(self);
+}

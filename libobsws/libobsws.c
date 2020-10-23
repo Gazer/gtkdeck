@@ -28,7 +28,7 @@ typedef struct _ObsWsPrivate {
 
 G_DEFINE_TYPE_WITH_PRIVATE(ObsWs, obs_ws, G_TYPE_OBJECT)
 
-typedef enum { PROFILE = 1, SCENE, ACTION, N_PROPERTIES } ObsWsProperty;
+typedef enum { PROFILE = 1, SCENE, N_PROPERTIES } ObsWsProperty;
 
 static GParamSpec *obj_properties[N_PROPERTIES] = {
     NULL,
@@ -172,6 +172,8 @@ GList *obs_ws_get_scenes(ObsWs *self, result_callback callback, gpointer user_da
     return NULL;
 }
 
+void on_scene_set(JsonObject *json, gpointer user_data) { printf("scene changed\n"); }
+
 void obs_ws_set_current_scene(ObsWs *self, const char *scene) {
     ObsWsClass *klass = OBS_WS_GET_CLASS(self);
 
@@ -180,7 +182,7 @@ void obs_ws_set_current_scene(ObsWs *self, const char *scene) {
     g_hash_table_insert(map, "scene-name", g_strdup(scene));
 
     int message_id = uwsc_message_id();
-    ws_send(klass->inst, message_id, map, NULL, NULL);
+    ws_send(klass->inst, message_id, map, on_scene_set, self);
 }
 // Private
 
@@ -214,27 +216,44 @@ static void ws_emit(const char *event, JsonObject *object) {
         g_sprintf(event_to_emit, "emit:message:%s", message_id);
     }
 
+    printf("Event: %s\n", event_to_emit);
     g_hash_table_iter_init(&iter, klass->callbacks);
     while (g_hash_table_iter_next(&iter, &key, &value)) {
         if (g_strcmp0(event_to_emit, key) == 0) {
             printf("got callback for %s ... calling\n", event_to_emit);
-            result_callback callback = (result_callback)value;
-            if (callback != NULL) {
-                gpointer user_data;
+            GList *callbacks = (GList *)value;
+            if (callbacks != NULL) {
+                GList *user_datas;
                 g_hash_table_lookup_extended(klass->callbacks_data, event_to_emit, NULL,
-                                             &user_data);
-                printf("got data for %s ... %p\n", event_to_emit, user_data);
-                callback(object, user_data);
+                                             (gpointer *)&user_datas);
+
+                while (callbacks != NULL) {
+                    result_callback callback = (result_callback)callbacks->data;
+                    gpointer user_data = user_datas->data;
+
+                    callback(object, user_data);
+
+                    callbacks = callbacks->next;
+                    user_datas = user_datas->next;
+                }
             }
         }
     }
 }
 
-static ws_emit_register_callback(const char *callbackId, result_callback callback,
-                                 gpointer user_data) {
-    printf("Registering callback for %s with data %p\n", callbackId, user_data);
-    printf("%d\n", g_hash_table_insert(klass->callbacks, g_strdup(callbackId), callback));
-    printf("%d\n", g_hash_table_insert(klass->callbacks_data, g_strdup(callbackId), user_data));
+void obs_ws_register_callback(const char *callbackId, result_callback callback,
+                              gpointer user_data) {
+    GList *callback_list = NULL;
+    GList *callback_data_list = NULL;
+    g_hash_table_lookup_extended(klass->callbacks, callbackId, NULL, (gpointer *)&callback_list);
+    g_hash_table_lookup_extended(klass->callbacks_data, callbackId, NULL,
+                                 (gpointer *)&callback_data_list);
+
+    callback_list = g_list_append(callback_list, callback);
+    callback_data_list = g_list_append(callback_data_list, user_data);
+
+    g_hash_table_insert(klass->callbacks, g_strdup(callbackId), callback_list);
+    g_hash_table_insert(klass->callbacks_data, g_strdup(callbackId), callback_data_list);
 }
 
 static void ws_send(struct wic_inst *inst, int message_id, GHashTable *map,
@@ -269,7 +288,7 @@ static void ws_send(struct wic_inst *inst, int message_id, GHashTable *map,
     char callback_id[50];
     g_sprintf(callback_id, "emit:message:%d", message_id);
 
-    ws_emit_register_callback(callback_id, callback, user_data);
+    obs_ws_register_callback(callback_id, callback, user_data);
     wic_send_text(inst, true, data, len);
 
     g_free(data);
@@ -381,13 +400,16 @@ static bool on_message_handler(struct wic_inst *inst, enum wic_encoding encoding
     }
 
     if (fin) {
+        // printf("RTA: %s\n", message_buffer->str);
         JsonParser *parser = json_parser_new();
         if (json_parser_load_from_data(parser, (const gchar *)message_buffer->str,
                                        message_buffer->len, NULL)) {
             JsonNode *root = json_parser_get_root(parser);
+            printf("Got json...");
             if (JSON_NODE_HOLDS_OBJECT(root)) {
                 JsonObject *message = json_node_get_object(root);
-                ws_emit("", message);
+                g_autofree gchar *event = json_object_get_string_value(message, "update-type");
+                ws_emit(event, message);
             }
         }
 

@@ -41,7 +41,6 @@ void on_scene_list(JsonObject *json, gpointer user_data) {
             while (l != NULL) {
                 gtk_list_store_append(store, &iter);
                 gtk_list_store_set(store, &iter, 0, l->data, -1);
-                printf("%s\n", l->data);
                 l = l->next;
                 index++;
             }
@@ -74,6 +73,7 @@ void change_scene_config(DeckPlugin *self, GtkBox *parent) {
     GtkTreeIter iter;
     GtkListStore *store = gtk_list_store_new(1, G_TYPE_STRING);
 
+    printf(".. %p\n", store);
     ObsWs *ws = obs_ws_new();
     obs_ws_get_scenes(ws, on_scene_list, store);
 
@@ -105,5 +105,20 @@ void change_scene_exec(DeckPlugin *self) {
     ObsWs *ws = obs_ws_new();
     obs_ws_set_current_scene(ws, scene);
 }
-void change_scene_save(DeckPlugin *self, char *group, GKeyFile *key_file) {}
-void change_scene_load(DeckPlugin *self, char *group, GKeyFile *key_file) {}
+void change_scene_save(DeckPlugin *self, char *group, GKeyFile *key_file) {
+    gchar *scene;
+    g_object_get(G_OBJECT(self), "scene", &scene, NULL);
+
+    if (scene != NULL) {
+        g_key_file_set_string(key_file, group, "scene", scene);
+        g_free(scene);
+    }
+}
+
+void change_scene_load(DeckPlugin *self, char *group, GKeyFile *key_file) {
+    g_autofree char *scene = g_key_file_get_string(key_file, group, "scene", NULL);
+
+    if (scene != NULL) {
+        g_object_set(G_OBJECT(self), "scene", scene, NULL);
+    }
+}
