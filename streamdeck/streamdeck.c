@@ -255,9 +255,9 @@ GList *stream_deck_list() {
         case 0x0063:
             type = STREAM_DECK_MINI;
             break;
-        // case 0x006c:
-        //     type = STREAM_DECK_XL;
-        //     break;
+        case 0x006c:
+            type = STREAM_DECK_XL;
+            break;
         default:
             printf("Device not yet supported\n");
         }
@@ -369,8 +369,14 @@ static void generic_set_image(StreamDeck *self, int key, GdkPixbuf *original) {
     gsize size;
     GError *error = NULL;
 
-    scaled =
-        gdk_pixbuf_scale_simple(original, priv->icon_size, priv->icon_size, GDK_INTERP_BILINEAR);
+    if (gdk_pixbuf_get_width(original) != priv->icon_size ||
+        gdk_pixbuf_get_height(original) != priv->icon_size) {
+        scaled =
+            gdk_pixbuf_scale_simple(original, priv->icon_size, priv->icon_size, GDK_INTERP_HYPER);
+    } else {
+        scaled = original;
+    }
+
     if (priv->key_flip_h) {
         scaled = gdk_pixbuf_flip(scaled, FALSE);
     }
@@ -381,7 +387,8 @@ static void generic_set_image(StreamDeck *self, int key, GdkPixbuf *original) {
         scaled = gdk_pixbuf_rotate_simple(scaled, priv->key_rotation);
     }
 
-    gdk_pixbuf_save_to_buffer(scaled, &buffer, &size, priv->key_image_format, &error, NULL);
+    gdk_pixbuf_save_to_buffer(scaled, &buffer, &size, priv->key_image_format, &error, "quality",
+                              "100", NULL);
 
     GBytes *image_bytes = g_bytes_new(buffer, size);
 
@@ -389,14 +396,20 @@ static void generic_set_image(StreamDeck *self, int key, GdkPixbuf *original) {
 }
 
 void stream_deck_set_image_from_file(StreamDeck *self, int key, gchar *file) {
-    GdkPixbuf *original = gdk_pixbuf_new_from_file(file, NULL);
+    StreamDeckPrivate *priv = stream_deck_get_instance_private(self);
+    GdkPixbuf *original =
+        gdk_pixbuf_new_from_file_at_size(file, priv->icon_size, priv->icon_size, NULL);
 
     generic_set_image(self, key, original);
 }
 
 void stream_deck_set_image_from_surface(StreamDeck *self, int key, cairo_surface_t *surface) {
+    StreamDeckPrivate *priv = stream_deck_get_instance_private(self);
+
     if (surface != NULL) {
-        GdkPixbuf *original = gdk_pixbuf_get_from_surface(surface, 0, 0, 72, 72);
+        GdkPixbuf *original =
+            gdk_pixbuf_get_from_surface(surface, 0, 0, cairo_image_surface_get_width(surface),
+                                        cairo_image_surface_get_height(surface));
 
         generic_set_image(self, key, original);
     }

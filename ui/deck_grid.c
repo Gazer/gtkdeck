@@ -155,7 +155,13 @@ static void on_deck_preview_update_app(GObject *gobject, GParamSpec *pspec, gpoi
     DeckPlugin *self = DECK_PLUGIN(gobject);
     cairo_surface_t *surface = deck_plugin_get_surface(self);
 
-    gtk_image_set_from_surface(GTK_IMAGE(user_data), surface);
+    GdkPixbuf *original =
+        gdk_pixbuf_get_from_surface(surface, 0, 0, cairo_image_surface_get_width(surface),
+                                    cairo_image_surface_get_height(surface));
+    original = gdk_pixbuf_scale_simple(original, 72, 72, GDK_INTERP_HYPER);
+
+    printf("w = %d\n", gdk_pixbuf_get_width(original));
+    gtk_image_set_from_pixbuf(GTK_IMAGE(user_data), original);
 }
 
 static void button_pressed(GtkButton *button, gpointer data) {
@@ -178,7 +184,12 @@ static void add_plugin_button(DeckGrid *grid, int key, StreamDeck *deck, DeckPlu
         widget = gtk_label_new("X");
     } else {
         cairo_surface_t *surface = deck_plugin_get_surface(plugin);
-        widget = gtk_image_new_from_surface(surface);
+        GdkPixbuf *original =
+            gdk_pixbuf_get_from_surface(surface, 0, 0, cairo_image_surface_get_width(surface),
+                                        cairo_image_surface_get_height(surface));
+        original = gdk_pixbuf_scale_simple(original, 72, 72, GDK_INTERP_HYPER);
+
+        widget = gtk_image_new_from_pixbuf(original);
     }
 
     if (plugin != NULL) {

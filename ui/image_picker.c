@@ -55,7 +55,13 @@ static void image_picker_constructed(GObject *object) {
     }
 
     cairo_surface_t *surface = deck_plugin_get_image(priv->plugin, BUTTON_STATE_NORMAL);
-    gtk_image_set_from_surface(GTK_IMAGE(priv->plugin_preview), surface);
+
+    GdkPixbuf *original =
+        gdk_pixbuf_get_from_surface(surface, 0, 0, cairo_image_surface_get_width(surface),
+                                    cairo_image_surface_get_height(surface));
+    original = gdk_pixbuf_scale_simple(original, 72, 72, GDK_INTERP_HYPER);
+
+    gtk_image_set_from_pixbuf(GTK_IMAGE(priv->plugin_preview), original);
 }
 
 static void image_picker_finalize(GObject *object) {
@@ -164,14 +170,19 @@ static void image_picker_pick_image(ImagePicker *self, GtkButton *button) {
 
 static void image_picker_show_state(ImagePicker *self, GtkToggleButton *button) {
     ImagePickerPrivate *priv = image_picker_get_instance_private(self);
+    cairo_surface_t *surface;
 
     if (gtk_toggle_button_get_active(priv->state_active_button)) {
-        cairo_surface_t *surface = deck_plugin_get_image(priv->plugin, BUTTON_STATE_SELECTED);
-        gtk_image_set_from_surface(GTK_IMAGE(priv->plugin_preview), surface);
+        surface = deck_plugin_get_image(priv->plugin, BUTTON_STATE_SELECTED);
     } else {
-        cairo_surface_t *surface = deck_plugin_get_image(priv->plugin, BUTTON_STATE_NORMAL);
-        gtk_image_set_from_surface(GTK_IMAGE(priv->plugin_preview), surface);
+        surface = deck_plugin_get_image(priv->plugin, BUTTON_STATE_NORMAL);
     }
+
+    GdkPixbuf *original =
+        gdk_pixbuf_get_from_surface(surface, 0, 0, cairo_image_surface_get_width(surface),
+                                    cairo_image_surface_get_height(surface));
+    original = gdk_pixbuf_scale_simple(original, 72, 72, GDK_INTERP_HYPER);
+    gtk_image_set_from_pixbuf(GTK_IMAGE(priv->plugin_preview), original);
 }
 
 // static image_preview_change(GtkRadioButton *button, gpointer user_data) {

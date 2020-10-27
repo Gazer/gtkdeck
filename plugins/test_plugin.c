@@ -94,10 +94,10 @@ void set_surface(TestPlugin *self) {
     cairo_surface_t *preview_surface;
     cairo_t *cr;
 
-    preview_surface = cairo_image_surface_create(CAIRO_FORMAT_RGB24, 72, 72);
+    preview_surface = cairo_image_surface_create(CAIRO_FORMAT_RGB24, 300, 300);
     cr = cairo_create(preview_surface);
     cairo_set_source_rgb(cr, priv->color.red, priv->color.green, priv->color.blue);
-    cairo_rectangle(cr, 0, 2, 72, 72);
+    cairo_rectangle(cr, 0, 0, 300, 300);
     cairo_fill(cr);
     cairo_destroy(cr);
 
@@ -123,10 +123,10 @@ void test_0_exec(DeckPlugin *self) {
     cairo_surface_t *preview_surface;
     cairo_t *cr;
 
-    preview_surface = cairo_image_surface_create(CAIRO_FORMAT_RGB24, 72, 72);
+    preview_surface = cairo_image_surface_create(CAIRO_FORMAT_RGB24, 300, 300);
     cr = cairo_create(preview_surface);
     cairo_set_source_rgb(cr, priv->color.red, priv->color.green, priv->color.blue);
-    cairo_rectangle(cr, 0, 2, 72, 72);
+    cairo_rectangle(cr, 0, 0, 300, 300);
     cairo_fill(cr);
     cairo_destroy(cr);
 

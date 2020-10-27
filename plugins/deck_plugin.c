@@ -44,16 +44,19 @@ static void deck_plugin_set_property(GObject *object, guint property_id, const G
         printf(">> Action set\n");
 
         if (priv->action != NULL && priv->action->default_image != NULL) {
-            pixbuf = gdk_pixbuf_new_from_resource(priv->action->default_image, NULL);
+            pixbuf = gdk_pixbuf_new_from_resource_at_scale(priv->action->default_image, 300, 300,
+                                                           TRUE, NULL);
         } else {
-            pixbuf = gdk_pixbuf_new_from_resource("/ar/com/p39/gtkdeck/generic_icon.png", NULL);
+            pixbuf = gdk_pixbuf_new_from_resource_at_scale("/ar/com/p39/gtkdeck/generic_icon.png",
+                                                           300, 300, TRUE, NULL);
         }
         if (pixbuf != NULL) {
             priv->preview_image = gdk_cairo_surface_create_from_pixbuf(pixbuf, 0, NULL);
             g_object_unref(pixbuf);
         }
         if (priv->action != NULL && priv->action->selected_image != NULL) {
-            pixbuf = gdk_pixbuf_new_from_resource(priv->action->selected_image, NULL);
+            pixbuf = gdk_pixbuf_new_from_resource_at_scale(priv->action->selected_image, 300, 300,
+                                                           TRUE, NULL);
             if (pixbuf != NULL) {
                 priv->preview_image_active = gdk_cairo_surface_create_from_pixbuf(pixbuf, 0, NULL);
                 g_object_unref(pixbuf);
@@ -185,7 +188,7 @@ static void deck_plugin_set_current_state(DeckPlugin *self) {
     if (priv->label != NULL && strlen(priv->label) > 0) {
         int width, height;
         cairo_surface_t *new_surface =
-            cairo_surface_create_similar(surface, CAIRO_CONTENT_COLOR_ALPHA, 72, 72);
+            cairo_surface_create_similar(surface, CAIRO_CONTENT_COLOR_ALPHA, 300, 300);
 
         cairo_t *cr = cairo_create(new_surface);
         // Paint the base image
@@ -196,7 +199,7 @@ static void deck_plugin_set_current_state(DeckPlugin *self) {
         PangoLayout *layout = pango_cairo_create_layout(cr);
 
         pango_layout_set_text(layout, priv->label, -1);
-        PangoFontDescription *desc = pango_font_description_from_string("Sans Bold 12");
+        PangoFontDescription *desc = pango_font_description_from_string("Sans Bold 40");
         pango_layout_set_font_description(layout, desc);
         pango_font_description_free(desc);
 
@@ -204,7 +207,7 @@ static void deck_plugin_set_current_state(DeckPlugin *self) {
         cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
         pango_cairo_update_layout(cr, layout);
         pango_layout_get_size(layout, &width, &height);
-        cairo_move_to(cr, 72 / 2 - width / PANGO_SCALE / 2, 72 - height / PANGO_SCALE);
+        cairo_move_to(cr, 300 / 2 - width / PANGO_SCALE / 2, 300 - height / PANGO_SCALE);
         pango_cairo_show_layout(cr, layout);
         cairo_restore(cr);
 
@@ -339,7 +342,7 @@ cairo_surface_t *deck_plugin_get_image(DeckPlugin *self, DeckPluginState mode) {
 
 void deck_plugin_set_image_from_file(DeckPlugin *self, DeckPluginState mode, char *filename) {
     DeckPluginPrivate *priv = deck_plugin_get_instance_private(self);
-    GdkPixbuf *pixbuf = gdk_pixbuf_new_from_file_at_scale(filename, 72, 72, FALSE, NULL);
+    GdkPixbuf *pixbuf = gdk_pixbuf_new_from_file_at_size(filename, 300, 300, NULL);
 
     if (mode == BUTTON_STATE_NORMAL) {
         if (priv->preview_image != NULL) {
