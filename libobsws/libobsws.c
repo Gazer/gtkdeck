@@ -161,13 +161,23 @@ static void obs_ws_heartbeat(const gchar *profile, const gchar *scene) {
 }
 
 // Public Members
+static ObsWs *global_ws = NULL;
 
-ObsWs *obs_ws_new() { return g_object_new(OBS_TYPE_WS, NULL); }
+ObsWs *obs_ws_new() {
+    if (global_ws == NULL) {
+        printf("create .....................\n");
+        global_ws = g_object_new(OBS_TYPE_WS, NULL);
+    }
+    return global_ws;
+}
 
 GList *obs_ws_get_scenes(ObsWs *self, result_callback callback, gpointer user_data) {
+    ObsWsPrivate *priv = obs_ws_get_instance_private(self);
     ObsWsClass *klass = OBS_WS_GET_CLASS(self);
 
-    ws_send_command(klass->inst, "GetSceneList", callback, user_data);
+    if (klass->inst != NULL) {
+        ws_send_command(klass->inst, "GetSceneList", callback, user_data);
+    }
 
     return NULL;
 }
@@ -175,15 +185,19 @@ GList *obs_ws_get_scenes(ObsWs *self, result_callback callback, gpointer user_da
 void on_scene_set(JsonObject *json, gpointer user_data) { printf("scene changed\n"); }
 
 void obs_ws_set_current_scene(ObsWs *self, const char *scene) {
+    ObsWsPrivate *priv = obs_ws_get_instance_private(self);
     ObsWsClass *klass = OBS_WS_GET_CLASS(self);
 
-    GHashTable *map = g_hash_table_new(g_str_hash, g_str_equal);
-    g_hash_table_insert(map, "request-type", g_strdup("SetCurrentScene"));
-    g_hash_table_insert(map, "scene-name", g_strdup(scene));
+    if (klass->inst != NULL) {
+        GHashTable *map = g_hash_table_new(g_str_hash, g_str_equal);
+        g_hash_table_insert(map, "request-type", g_strdup("SetCurrentScene"));
+        g_hash_table_insert(map, "scene-name", g_strdup(scene));
 
-    int message_id = uwsc_message_id();
-    ws_send(klass->inst, message_id, map, on_scene_set, self);
+        int message_id = uwsc_message_id();
+        ws_send(klass->inst, message_id, map, on_scene_set, self);
+    }
 }
+
 // Private
 
 const gchar *json_object_get_string_value(JsonObject *json, const gchar *key) {
@@ -194,6 +208,25 @@ const gchar *json_object_get_string_value(JsonObject *json, const gchar *key) {
         }
     }
     return NULL;
+}
+
+const gboolean json_object_get_boolean_value(JsonObject *json, const gchar *key) {
+    if (json_object_has_member(json, key)) {
+        JsonNode *updateType = json_object_get_member(json, key);
+        if (JSON_NODE_HOLDS_VALUE(updateType)) {
+            return json_node_get_boolean(updateType);
+        }
+    }
+    return FALSE;
+}
+
+JsonObject *json_object_from_boolean_value(gboolean value) {
+    JsonObject *object = json_object_new();
+    JsonNode *node = json_node_new(JSON_NODE_VALUE);
+    json_node_set_boolean(node, value);
+    json_object_set_member(object, "value", node);
+
+    return object;
 }
 
 static ObsWsClass *klass = NULL;
@@ -304,31 +337,6 @@ static void ws_send_command(struct wic_inst *inst, const gchar *command, result_
     ws_send(inst, message_id, map, callback, user_data);
 }
 
-// static void ws_onopen(struct uwsc_client *cl) {
-//     // static struct ev_io stdin_watcher;
-
-//     uwsc_log_info("onopen\n");
-
-//     GHashTable *map = g_hash_table_new(g_str_hash, g_str_equal);
-//     // {"enable":true,"request-type":"SetHeartbeat","message-id":"1"}
-//     // {"enable":true,"request-type":"SetHeartbeat","message-id":"2"}
-//     // g_hash_table_insert(map, "enable", "true");
-//     // g_hash_table_insert(map, "request-type", "SetHeartbeat");
-//     // g_hash_table_insert(map, "message-id", message);
-
-//     g_hash_table_insert(map, "request-type", "GetAuthRequired");
-
-//     int message_id = uwsc_message_id();
-//     uwsc_send(cl, message_id, map);
-// }
-
-// static void signal_cb(struct ev_loop *loop, ev_signal *w, int revents) {
-//     if (w->signum == SIGINT) {
-//         ev_break(loop, EVBREAK_ALL);
-//         uwsc_log_info("Normal quit\n");
-//     }
-// }
-
 static gpointer obs_ws_main(gpointer user_data) {
     // Save Global Thread Klass to use in the Protocol
     klass = (ObsWsClass *)user_data;
@@ -353,9 +361,7 @@ static gpointer obs_ws_main(gpointer user_data) {
     arg.role = WIC_ROLE_CLIENT;
 
     for (;;) {
-
         if (!wic_init(&inst, &arg)) {
-
             exit(EXIT_FAILURE);
         };
 
@@ -371,19 +377,12 @@ static gpointer obs_ws_main(gpointer user_data) {
                 while (transport_recv(s, &inst))
                     ;
             } else {
-
                 transport_close(&s);
             }
         }
 
-        if (wic_get_redirect_url(&inst) && redirects) {
-
-            redirects--;
-            strcpy(url, wic_get_redirect_url(&inst));
-        } else {
-
-            break;
-        }
+        // Wait and try to connect again
+        g_usleep(3000000);
     }
 
     return NULL;
@@ -431,6 +430,10 @@ void on_get_auth_result(JsonObject *object, gpointer user_data) {
 static void on_open_handler(struct wic_inst *inst) {
     const char *name, *value;
 
+    JsonObject *object = json_object_from_boolean_value(TRUE);
+    ws_emit("Connected", object);
+    json_object_unref(object);
+
     LOG("websocket is open");
 
     LOG("received handshake:");
@@ -446,6 +449,12 @@ static void on_open_handler(struct wic_inst *inst) {
 
 static void on_close_handler(struct wic_inst *inst, uint16_t code, const char *reason,
                              uint16_t size) {
+    JsonObject *object = json_object_from_boolean_value(FALSE);
+    ws_emit("Connected", object);
+    json_object_unref(object);
+
+    klass->inst = NULL;
+
     LOG("websocket closed for reason %u", code);
 }
 

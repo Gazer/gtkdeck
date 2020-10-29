@@ -53,6 +53,7 @@ struct _DeckPluginClass {
     DeckPlugin *(*clone_with_code)(DeckPlugin *self, int code);
     void (*config_widget)(DeckPlugin *self, GtkBox *parent);
     void (*exec)(DeckPlugin *self);
+    void (*render)(DeckPlugin *self, cairo_t *cr, int width, int height);
 
     GThreadPool *pool;
 

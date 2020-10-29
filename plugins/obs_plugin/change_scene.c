@@ -105,6 +105,7 @@ void change_scene_exec(DeckPlugin *self) {
     ObsWs *ws = obs_ws_new();
     obs_ws_set_current_scene(ws, scene);
 }
+
 void change_scene_save(DeckPlugin *self, char *group, GKeyFile *key_file) {
     gchar *scene;
     g_object_get(G_OBJECT(self), "scene", &scene, NULL);

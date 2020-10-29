@@ -159,6 +159,7 @@ static void deck_plugin_class_init(DeckPluginClass *klass) {
     object_class->finalize = deck_plugin_finalize;
 
     klass->pool = g_thread_pool_new(process_plugin_exec, NULL, 5, TRUE, NULL);
+    klass->render = NULL;
 
     obj_properties[ACTION] =
         g_param_spec_pointer("action", "Action", "Plugin action to execute.", G_PARAM_READWRITE);
@@ -176,6 +177,7 @@ static void deck_plugin_class_init(DeckPluginClass *klass) {
 }
 
 static void deck_plugin_set_current_state(DeckPlugin *self) {
+    DeckPluginClass *klass = DECK_PLUGIN_GET_CLASS(self);
     DeckPluginPrivate *priv = deck_plugin_get_instance_private(self);
     cairo_surface_t *surface;
 
@@ -210,6 +212,10 @@ static void deck_plugin_set_current_state(DeckPlugin *self) {
         cairo_move_to(cr, 300 / 2 - width / PANGO_SCALE / 2, 300 - height / PANGO_SCALE);
         pango_cairo_show_layout(cr, layout);
         cairo_restore(cr);
+
+        if (klass->render != NULL) {
+            klass->render(self, cr, 300, 300);
+        }
 
         // Cleanup
         cairo_destroy(cr);
