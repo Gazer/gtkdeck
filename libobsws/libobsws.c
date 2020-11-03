@@ -198,6 +198,19 @@ void obs_ws_set_current_scene(ObsWs *self, const char *scene) {
     }
 }
 
+void obs_ws_get_current_scene(ObsWs *self, result_callback callback, gpointer user_data) {
+    ObsWsPrivate *priv = obs_ws_get_instance_private(self);
+    ObsWsClass *klass = OBS_WS_GET_CLASS(self);
+
+    if (klass->inst != NULL) {
+        GHashTable *map = g_hash_table_new(g_str_hash, g_str_equal);
+        g_hash_table_insert(map, "request-type", g_strdup("GetCurrentScene"));
+
+        int message_id = uwsc_message_id();
+        ws_send(klass->inst, message_id, map, callback, user_data);
+    }
+}
+
 // Private
 
 const gchar *json_object_get_string_value(JsonObject *json, const gchar *key) {
@@ -251,6 +264,7 @@ static void ws_emit(const char *event, JsonObject *object) {
 
     printf("Event: %s\n", event_to_emit);
     g_hash_table_iter_init(&iter, klass->callbacks);
+    printf("iter 1 .... \n");
     while (g_hash_table_iter_next(&iter, &key, &value)) {
         if (g_strcmp0(event_to_emit, key) == 0) {
             printf("got callback for %s ... calling\n", event_to_emit);
@@ -303,6 +317,7 @@ static void ws_send(struct wic_inst *inst, int message_id, GHashTable *map,
     JsonNode *node = json_node_new(JSON_NODE_OBJECT);
 
     g_hash_table_iter_init(&iter, map);
+    printf("iter 2 ...\n");
     while (g_hash_table_iter_next(&iter, &key, &value)) {
         if (g_strcmp0("true", value) == 0) {
             json_object_set_boolean_member(obj, key, TRUE);
@@ -321,8 +336,10 @@ static void ws_send(struct wic_inst *inst, int message_id, GHashTable *map,
     char callback_id[50];
     g_sprintf(callback_id, "emit:message:%d", message_id);
 
-    obs_ws_register_callback(callback_id, callback, user_data);
-    wic_send_text(inst, true, data, len);
+    if (callback != NULL) {
+        obs_ws_register_callback(callback_id, callback, user_data);
+    }
+    printf(">> Send Status: %d\n", wic_send_text(inst, true, data, len));
 
     g_free(data);
     g_object_unref(json);
@@ -392,17 +409,19 @@ GString *message_buffer = NULL;
 static bool on_message_handler(struct wic_inst *inst, enum wic_encoding encoding, bool fin,
                                const char *data, uint16_t size) {
 
+    printf("got message to process\n");
     if (message_buffer == NULL) {
-        message_buffer = g_string_new(data);
+        message_buffer = g_string_new_len(data, size);
     } else {
         g_string_append_len(message_buffer, data, size);
     }
 
     if (fin) {
         // printf("RTA: %s\n", message_buffer->str);
+        GError *error = NULL;
         JsonParser *parser = json_parser_new();
         if (json_parser_load_from_data(parser, (const gchar *)message_buffer->str,
-                                       message_buffer->len, NULL)) {
+                                       message_buffer->len, &error)) {
             JsonNode *root = json_parser_get_root(parser);
             printf("Got json...");
             if (JSON_NODE_HOLDS_OBJECT(root)) {
@@ -410,6 +429,8 @@ static bool on_message_handler(struct wic_inst *inst, enum wic_encoding encoding
                 g_autofree gchar *event = json_object_get_string_value(message, "update-type");
                 ws_emit(event, message);
             }
+        } else {
+            printf("nananan %s\n", error->message);
         }
 
         g_string_free(message_buffer, TRUE);
@@ -424,15 +445,13 @@ static void on_handshake_failure_handler(struct wic_inst *inst, enum wic_handsha
 }
 
 void on_get_auth_result(JsonObject *object, gpointer user_data) {
-    // TODO: Check if we need to login
+    JsonObject *value = json_object_from_boolean_value(TRUE);
+    ws_emit("Connected", value);
+    json_object_unref(value);
 }
 
 static void on_open_handler(struct wic_inst *inst) {
     const char *name, *value;
-
-    JsonObject *object = json_object_from_boolean_value(TRUE);
-    ws_emit("Connected", object);
-    json_object_unref(object);
 
     LOG("websocket is open");
 

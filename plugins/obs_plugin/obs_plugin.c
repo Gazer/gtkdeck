@@ -131,7 +131,7 @@ static void obs_plugin_class_init(OBSPluginClass *klass) {
 static obs_plugin_render(DeckPlugin *self, cairo_t *cr, int width, int height) {
     OBSPluginPrivate *priv = obs_plugin_get_instance_private(self);
 
-    if (!priv->obs_connected) {
+    if (priv->obs_connected == FALSE) {
         cairo_save(cr);
 
         int margin = 50;
@@ -183,6 +183,11 @@ static void on_ws_connected(JsonObject *json, gpointer user_data) {
     printf("Connected %d\n", connected);
     g_object_set(plugin, "obs_connected", connected, NULL);
     deck_plugin_reset(plugin);
+
+    if (connected) {
+        ObsWs *ws = obs_plugin_new();
+        obs_ws_get_current_scene(ws, NULL, NULL);
+    }
 }
 
 DeckPlugin *obs_plugin_clone(DeckPlugin *self, int action) {

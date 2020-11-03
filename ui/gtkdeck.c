@@ -11,7 +11,7 @@ void save_config(DeckGrid *grid, StreamDeck *deck);
 
 GList *plugin_list = NULL;
 GtkBox *config_row;
-DeckGrid *global_grid;
+GtkWidget *global_grid;
 
 void on_drag_data_get(GtkWidget *widget, GdkDragContext *drag_context, GtkSelectionData *sdata,
                       guint info, guint time, gpointer user_data) {
@@ -184,10 +184,11 @@ int main(int argc, char **argv) {
     stream_deck_info(devices->data);
     stream_deck_reset_to_logo(devices->data);
 
+    // Init WS library
+    obs_ws_new();
+
     app = gtk_application_new("ar.com.p39.gtkdeck", G_APPLICATION_FLAGS_NONE);
     g_signal_connect(app, "activate", G_CALLBACK(activate), devices);
-
-    ObsWs *test = obs_ws_new();
 
     status = g_application_run(G_APPLICATION(app), argc, argv);
 

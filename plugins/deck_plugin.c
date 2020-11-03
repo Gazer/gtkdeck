@@ -187,16 +187,16 @@ static void deck_plugin_set_current_state(DeckPlugin *self) {
         surface = priv->preview_image, NULL;
     }
 
+    int width, height;
+    cairo_surface_t *new_surface =
+        cairo_surface_create_similar(surface, CAIRO_CONTENT_COLOR_ALPHA, 300, 300);
+
+    cairo_t *cr = cairo_create(new_surface);
+    // Paint the base image
+    cairo_set_source_surface(cr, surface, 0, 0);
+    cairo_paint(cr);
+
     if (priv->label != NULL && strlen(priv->label) > 0) {
-        int width, height;
-        cairo_surface_t *new_surface =
-            cairo_surface_create_similar(surface, CAIRO_CONTENT_COLOR_ALPHA, 300, 300);
-
-        cairo_t *cr = cairo_create(new_surface);
-        // Paint the base image
-        cairo_set_source_surface(cr, surface, 0, 0);
-        cairo_paint(cr);
-
         /* Create a PangoLayout, set the font and text */
         PangoLayout *layout = pango_cairo_create_layout(cr);
 
@@ -212,16 +212,16 @@ static void deck_plugin_set_current_state(DeckPlugin *self) {
         cairo_move_to(cr, 300 / 2 - width / PANGO_SCALE / 2, 300 - height / PANGO_SCALE);
         pango_cairo_show_layout(cr, layout);
         cairo_restore(cr);
-
-        if (klass->render != NULL) {
-            klass->render(self, cr, 300, 300);
-        }
-
-        // Cleanup
-        cairo_destroy(cr);
-
-        surface = new_surface;
     }
+
+    if (klass->render != NULL) {
+        klass->render(self, cr, 300, 300);
+    }
+
+    // Cleanup
+    cairo_destroy(cr);
+
+    surface = new_surface;
 
     g_object_set(G_OBJECT(self), "preview", surface, NULL);
 }
