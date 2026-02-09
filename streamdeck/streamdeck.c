@@ -1,4 +1,5 @@
 #include "streamdeck.h"
+#include <cairo.h>
 #include <gdk-pixbuf/gdk-pixbuf.h>
 #include <glib-object.h>
 #include <hidapi.h>
@@ -284,48 +285,15 @@ void stream_deck_free(GList *devices) {
 
 void stream_deck_info(StreamDeck *self) {
     StreamDeckPrivate *priv = stream_deck_get_instance_private(self);
-    wchar_t wstr[255];
-    int res;
+    GString *serial = stream_deck_get_serial_number(self);
+    GString *firmware = stream_deck_get_firmware_version(self);
 
-    printf("Found StreamDeck device (handle: %p)\n", (void *)priv->handle);
+    printf("StreamDeck Info:\n");
+    printf("  Serial Number: %s\n", serial->str);
+    printf("  Firmware: %s\n", firmware->str);
 
-    memset(wstr, 0, sizeof(wstr));
-    res = hid_get_manufacturer_string(priv->handle, wstr, 255);
-    printf("hid_get_manufacturer_string returned: %d\n", res);
-    if (res == -1) {
-        printf("HID Error: %ls\n", hid_error(priv->handle));
-    } else {
-        wprintf(L"Manufacturer String: '%ls'\n", wstr);
-    }
-
-    memset(wstr, 0, sizeof(wstr));
-    res = hid_get_product_string(priv->handle, wstr, 255);
-    printf("hid_get_product_string returned: %d\n", res);
-    if (res == -1) {
-        printf("HID Error: %ls\n", hid_error(priv->handle));
-    } else {
-        wprintf(L"Product String: '%ls'\n", wstr);
-    }
-
-    memset(wstr, 0, sizeof(wstr));
-    res = hid_get_serial_number_string(priv->handle, wstr, 255);
-    printf("hid_get_serial_number_string returned: %d\n", res);
-    if (res == -1) {
-        printf("HID Error: %ls\n", hid_error(priv->handle));
-    } else {
-        wprintf(L"Serial Number String: (%d) '%ls'\n", wstr[0], wstr);
-    }
-
-    memset(wstr, 0, sizeof(wstr));
-    res = hid_get_indexed_string(priv->handle, 1, wstr, 255);
-    printf("hid_get_indexed_string returned: %d\n", res);
-    if (res == -1) {
-        printf("HID Error: %ls\n", hid_error(priv->handle));
-    } else {
-        wprintf(L"Indexed String 1: '%ls'\n", wstr);
-    }
-    printf("aca\n");
-    fflush(stdout);
+    g_string_free(serial, TRUE);
+    g_string_free(firmware, TRUE);
 }
 
 void stream_deck_reset_to_logo(StreamDeck *self) {
@@ -414,8 +382,36 @@ static void generic_set_image(StreamDeck *self, int key, GdkPixbuf *original) {
         scaled = gdk_pixbuf_rotate_simple(scaled, priv->key_rotation);
     }
 
-    gdk_pixbuf_save_to_buffer(scaled, &buffer, &size, priv->key_image_format, &error, "quality",
-                              "100", NULL);
+    // JPEG doesn't support alpha channel, convert to RGB if necessary
+    if (g_strcmp0(priv->key_image_format, "jpeg") == 0 && gdk_pixbuf_get_has_alpha(scaled)) {
+        int w = gdk_pixbuf_get_width(scaled);
+        int h = gdk_pixbuf_get_height(scaled);
+        cairo_surface_t *surface = cairo_image_surface_create(CAIRO_FORMAT_RGB24, w, h);
+        cairo_t *cr = cairo_create(surface);
+        // Fill with white background (in case of transparency)
+        cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
+        cairo_paint(cr);
+        // Draw the original image on top
+        gdk_cairo_set_source_pixbuf(cr, scaled, 0, 0);
+        cairo_paint(cr);
+        cairo_destroy(cr);
+        GdkPixbuf *rgb = gdk_pixbuf_get_from_surface(surface, 0, 0, w, h);
+        cairo_surface_destroy(surface);
+        if (rgb != NULL) {
+            if (scaled != original) {
+                g_object_unref(scaled);
+            }
+            scaled = rgb;
+        }
+    }
+
+    gboolean save_res = gdk_pixbuf_save_to_buffer(scaled, &buffer, &size, priv->key_image_format,
+                                                  &error, "quality", "100", NULL);
+
+    if (!save_res || error != NULL) {
+        g_warning("Failed to save image to buffer: %s", error ? error->message : "unknown");
+        return;
+    }
 
     GBytes *image_bytes = g_bytes_new(buffer, size);
 
@@ -434,9 +430,10 @@ void stream_deck_set_image_from_surface(StreamDeck *self, int key, cairo_surface
     StreamDeckPrivate *priv = stream_deck_get_instance_private(self);
 
     if (surface != NULL) {
-        GdkPixbuf *original =
-            gdk_pixbuf_get_from_surface(surface, 0, 0, cairo_image_surface_get_width(surface),
-                                        cairo_image_surface_get_height(surface));
+        int width = cairo_image_surface_get_width(surface);
+        int height = cairo_image_surface_get_height(surface);
+
+        GdkPixbuf *original = gdk_pixbuf_get_from_surface(surface, 0, 0, width, height);
 
         generic_set_image(self, key, original);
     }

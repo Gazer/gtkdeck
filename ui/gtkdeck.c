@@ -186,7 +186,6 @@ int main(int argc, char **argv) {
     }
 
     stream_deck_info(devices->data);
-    //stream_deck_reset_to_logo(devices->data);
 
     // Init WS library
     // TODO: we need to do this only if the user try to use the obs plugin
@@ -197,6 +196,7 @@ int main(int argc, char **argv) {
 
     status = g_application_run(G_APPLICATION(app), argc, argv);
 
+    stream_deck_reset_to_logo(devices->data);
     stream_deck_free(devices);
     deck_plugin_exit();
 

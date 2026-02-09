@@ -148,7 +148,9 @@ static void on_deck_preview_update_device(GObject *gobject, GParamSpec *pspec, g
     cairo_surface_t *surface = deck_plugin_get_surface(self);
     int key = GPOINTER_TO_UINT(g_object_get_data(gobject, "key"));
 
-    stream_deck_set_image_from_surface(deck, key, surface);
+    if (surface != NULL) {
+        stream_deck_set_image_from_surface(deck, key, surface);
+    }
 }
 
 static void on_deck_preview_update_app(GObject *gobject, GParamSpec *pspec, gpointer user_data) {

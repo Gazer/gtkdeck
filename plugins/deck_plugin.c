@@ -188,13 +188,23 @@ static void deck_plugin_set_current_state(DeckPlugin *self) {
     }
 
     int width, height;
-    cairo_surface_t *new_surface =
-        cairo_surface_create_similar(surface, CAIRO_CONTENT_COLOR_ALPHA, 300, 300);
+    cairo_surface_t *new_surface;
+    cairo_t *cr;
 
-    cairo_t *cr = cairo_create(new_surface);
-    // Paint the base image
-    cairo_set_source_surface(cr, surface, 0, 0);
-    cairo_paint(cr);
+    if (surface != NULL) {
+        new_surface = cairo_surface_create_similar(surface, CAIRO_CONTENT_COLOR_ALPHA, 300, 300);
+        cr = cairo_create(new_surface);
+        // Paint the base image
+        cairo_set_source_surface(cr, surface, 0, 0);
+        cairo_paint(cr);
+    } else {
+        // Create a blank surface if no preview image is available
+        new_surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 300, 300);
+        cr = cairo_create(new_surface);
+        // Fill with black background
+        cairo_set_source_rgb(cr, 0.0, 0.0, 0.0);
+        cairo_paint(cr);
+    }
 
     if (priv->label != NULL && strlen(priv->label) > 0) {
         /* Create a PangoLayout, set the font and text */
