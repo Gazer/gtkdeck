@@ -5,6 +5,7 @@
 #include "streamdeck.h"
 #include "test_plugin.h"
 #include <gtk/gtk.h>
+#include <libayatana-appindicator/app-indicator.h>
 #include <unistd.h>
 
 void save_config(DeckGrid *grid, StreamDeck *deck);
@@ -12,10 +13,17 @@ void save_config(DeckGrid *grid, StreamDeck *deck);
 GList *plugin_list = NULL;
 GtkBox *config_row;
 GtkWidget *global_grid;
+GtkWidget *main_window = NULL;
 GtkWidget *delete_button;
 GtkWidget *config_container;
 GtkWidget *action_name_label;
 DeckPlugin *current_plugin = NULL;
+AppIndicator *indicator = NULL;
+
+typedef struct {
+    GList *devices;
+    gboolean start_hidden;
+} AppContext;
 
 void on_drag_data_get(GtkWidget *widget, GdkDragContext *drag_context, GtkSelectionData *sdata,
                       guint info, guint time, gpointer user_data) {
@@ -170,12 +178,31 @@ static void on_delete_clicked(GtkButton *button, gpointer user_data) {
     gtk_widget_hide(config_container);
 }
 
+void on_menu_quit(GtkMenuItem *item, gpointer user_data) {
+    GtkApplication *app = GTK_APPLICATION(user_data);
+    g_application_quit(G_APPLICATION(app));
+}
+
+void on_menu_toggle(GtkMenuItem *item, gpointer user_data) {
+    if (gtk_widget_get_visible(main_window)) {
+        gtk_widget_hide(main_window);
+    } else {
+        gtk_widget_show(main_window);
+        gtk_window_present(GTK_WINDOW(main_window));
+    }
+}
+
+gboolean on_window_delete_event(GtkWidget *widget, GdkEvent *event, gpointer user_data) {
+    gtk_widget_hide(widget);
+    return TRUE;
+}
+
 static void activate(GtkApplication *app, gpointer user_data) {
     GtkBuilder *builder;
-    GtkWidget *window;
     GtkTreeView *plugin_tree;
     GObject *o;
-    GList *devices = (GList *)user_data;
+    AppContext *ctx = (AppContext *)user_data;
+    GList *devices = ctx->devices;
 
     StreamDeck *device = STREAM_DECK(devices->data);
 
@@ -187,8 +214,32 @@ static void activate(GtkApplication *app, gpointer user_data) {
     init_device_info(builder, device);
 
     o = gtk_builder_get_object(builder, "main");
-    window = GTK_WIDGET(o);
-    gtk_window_set_title(GTK_WINDOW(window), "Gtk Deck");
+    main_window = GTK_WIDGET(o);
+    gtk_window_set_title(GTK_WINDOW(main_window), "Gtk Deck");
+    g_signal_connect(main_window, "delete-event", G_CALLBACK(on_window_delete_event), NULL);
+
+    GdkPixbuf *pixbuf = gdk_pixbuf_new_from_resource("/ar/com/p39/gtkdeck/generic_icon.png", NULL);
+    if (pixbuf) {
+        gdk_pixbuf_save(pixbuf, "/tmp/gtkdeck-icon.png", "png", NULL, NULL);
+        g_object_unref(pixbuf);
+    }
+
+    indicator = app_indicator_new("gtkdeck", "gtkdeck-icon", APP_INDICATOR_CATEGORY_APPLICATION_STATUS);
+    app_indicator_set_status(indicator, APP_INDICATOR_STATUS_ACTIVE);
+    app_indicator_set_icon_theme_path(indicator, "/tmp");
+
+    GtkWidget *menu = gtk_menu_new();
+
+    GtkWidget *toggle_item = gtk_menu_item_new_with_label("Show/Hide");
+    g_signal_connect(toggle_item, "activate", G_CALLBACK(on_menu_toggle), NULL);
+    gtk_menu_shell_append(GTK_MENU_SHELL(menu), toggle_item);
+
+    GtkWidget *quit_item = gtk_menu_item_new_with_label("Quit");
+    g_signal_connect(quit_item, "activate", G_CALLBACK(on_menu_quit), app);
+    gtk_menu_shell_append(GTK_MENU_SHELL(menu), quit_item);
+
+    gtk_widget_show_all(menu);
+    app_indicator_set_menu(indicator, GTK_MENU(menu));
 
     config_row = GTK_BOX(gtk_builder_get_object(builder, "config_row"));
     config_container = GTK_WIDGET(gtk_builder_get_object(builder, "config_container"));
@@ -211,9 +262,12 @@ static void activate(GtkApplication *app, gpointer user_data) {
 
     g_object_unref(builder);
 
-    gtk_application_add_window(app, GTK_WINDOW(window));
+    gtk_application_add_window(app, GTK_WINDOW(main_window));
 
-    gtk_widget_show_all(window);
+    gtk_widget_show_all(main_window);
+    if (ctx->start_hidden) {
+        gtk_widget_hide(main_window);
+    }
     gtk_widget_hide(config_container);
 }
 
@@ -221,6 +275,13 @@ int main(int argc, char **argv) {
     GtkApplication *app;
     GList *devices;
     int status;
+    gboolean start_hidden = FALSE;
+
+    for (int i = 1; i < argc; i++) {
+        if (g_strcmp0(argv[i], "--start-hidden") == 0) {
+            start_hidden = TRUE;
+        }
+    }
 
     devices = stream_deck_list();
 
@@ -236,10 +297,14 @@ int main(int argc, char **argv) {
     // TODO: we need to do this only if the user try to use the obs plugin
     // obs_ws_new();
 
-    app = gtk_application_new("ar.com.p39.gtkdeck", G_APPLICATION_FLAGS_NONE);
-    g_signal_connect(app, "activate", G_CALLBACK(activate), devices);
+    AppContext ctx = {.devices = devices, .start_hidden = start_hidden};
+
+    app = gtk_application_new("ar.com.p39.gtkdeck", G_APPLICATION_DEFAULT_FLAGS);
+    g_signal_connect(app, "activate", G_CALLBACK(activate), &ctx);
 
     status = g_application_run(G_APPLICATION(app), argc, argv);
+
+    unlink("/tmp/gtkdeck-icon.png");
 
     stream_deck_reset_to_logo(devices->data);
     stream_deck_free(devices);

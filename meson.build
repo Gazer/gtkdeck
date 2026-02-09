@@ -11,7 +11,8 @@ gtkdeps = [
     dependency('libusb-1.0'),
     dependency('hidapi-libusb'),
     # dependency('libwebsockets'),
-    dependency('json-glib-1.0')
+    dependency('json-glib-1.0'),
+    dependency('ayatana-appindicator3-0.1')
 ]
 
 main_files = files([
