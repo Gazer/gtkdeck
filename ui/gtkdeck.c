@@ -14,6 +14,7 @@ GtkBox *config_row;
 GtkWidget *global_grid;
 GtkWidget *delete_button;
 GtkWidget *config_container;
+GtkWidget *action_name_label;
 DeckPlugin *current_plugin = NULL;
 
 void on_drag_data_get(GtkWidget *widget, GdkDragContext *drag_context, GtkSelectionData *sdata,
@@ -111,6 +112,11 @@ void show_config(GtkButton *button, DeckPlugin *plugin, gpointer data) {
     // Store the current plugin being configured
     current_plugin = plugin;
 
+    DeckPluginInfo *info = deck_plugin_get_info(plugin);
+    char *action_name = deck_plugin_get_action_name(plugin);
+    g_autofree char *label_text = g_strdup_printf("%s: %s", info->name, action_name);
+    gtk_label_set_text(GTK_LABEL(action_name_label), label_text);
+
     // Show Preview at the left
     children = gtk_container_get_children(GTK_CONTAINER(config_row));
     while (children != NULL) {
@@ -186,6 +192,7 @@ static void activate(GtkApplication *app, gpointer user_data) {
 
     config_row = GTK_BOX(gtk_builder_get_object(builder, "config_row"));
     config_container = GTK_WIDGET(gtk_builder_get_object(builder, "config_container"));
+    action_name_label = GTK_WIDGET(gtk_builder_get_object(builder, "action_name"));
 
     delete_button = GTK_WIDGET(gtk_builder_get_object(builder, "delete_button"));
     g_signal_connect(delete_button, "clicked", G_CALLBACK(on_delete_clicked), NULL);

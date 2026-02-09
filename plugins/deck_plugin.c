@@ -16,6 +16,7 @@ typedef struct _DeckPluginPrivate {
     char *name;
 
     char *label;
+    GdkRGBA label_color;
     cairo_surface_t *surface;
     cairo_surface_t *preview_image;
     cairo_surface_t *preview_image_active;
@@ -120,6 +121,9 @@ static void deck_plugin_init(DeckPlugin *self) {
     priv->preview_image = NULL;
     priv->preview_image_active = NULL;
     priv->label = NULL;
+    priv->label_color.red = 0;
+    priv->label_color.green = 0;
+    priv->label_color.blue = 0;
 }
 
 static void deck_plugin_finalize(GObject *object) {
@@ -226,7 +230,7 @@ static void deck_plugin_set_current_state(DeckPlugin *self) {
         pango_font_description_free(desc);
 
         cairo_save(cr);
-        cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
+        cairo_set_source_rgb(cr, priv->label_color.red, priv->label_color.green, priv->label_color.blue);
         pango_cairo_update_layout(cr, layout);
         pango_layout_get_size(layout, &width, &height);
         cairo_move_to(cr, 300 / 2 - width / PANGO_SCALE / 2, 300 - height / PANGO_SCALE);
@@ -328,6 +332,15 @@ void label_text_changed(GtkEditable *editable, gpointer user_data) {
     g_free(text);
 }
 
+void on_label_color_selected(GtkColorButton *widget, gpointer user_data) {
+    DeckPlugin *self = DECK_PLUGIN(user_data);
+    DeckPluginPrivate *priv = deck_plugin_get_instance_private(DECK_PLUGIN(self));
+
+    gtk_color_chooser_get_rgba(GTK_COLOR_CHOOSER(widget), &(priv->label_color));
+    deck_plugin_reset(self);
+}
+
+
 void deck_plugin_get_config_widget(DeckPlugin *self, GtkBox *parent) {
     DeckPluginPrivate *priv = deck_plugin_get_instance_private(self);
 
@@ -340,11 +353,15 @@ void deck_plugin_get_config_widget(DeckPlugin *self, GtkBox *parent) {
     if (text != NULL) {
         gtk_entry_set_text(GTK_ENTRY(entry), text);
     }
+    GtkWidget *color_picker = gtk_color_button_new();
+    gtk_color_chooser_set_rgba(GTK_COLOR_CHOOSER(color_picker), &(priv->label_color));
+    g_signal_connect(G_OBJECT(color_picker), "color-set", G_CALLBACK(on_label_color_selected), self);
 
     g_signal_connect(G_OBJECT(entry), "changed", G_CALLBACK(label_text_changed), self);
 
     gtk_box_pack_start(GTK_BOX(hbox), label, FALSE, TRUE, 5);
     gtk_box_pack_start(GTK_BOX(hbox), entry, TRUE, TRUE, 5);
+    gtk_box_pack_start(GTK_BOX(hbox), color_picker, FALSE, TRUE, 5);
 
     gtk_box_pack_start(parent, GTK_WIDGET(hbox), TRUE, FALSE, 5);
 
@@ -502,6 +519,8 @@ void deck_plugin_save(DeckPlugin *self, int position, GKeyFile *key_file) {
         printf("Saving label %s\n", priv->label);
         g_key_file_set_string(key_file, group, "label", priv->label);
     }
+    g_autofree char *color = gdk_rgba_to_string(&priv->label_color);
+    g_key_file_set_string(key_file, group, "label_color", color);
 
     priv->action->save(self, group, key_file);
 }
@@ -511,6 +530,7 @@ DeckPlugin *deck_plugin_load(GKeyFile *key_file, char *group) {
 
     g_autofree char *name = g_key_file_get_string(key_file, group, "name", NULL);
     g_autofree char *label = g_key_file_get_string(key_file, group, "label", NULL);
+    g_autofree char *color = g_key_file_get_string(key_file, group, "label_color", NULL);
     g_autofree char *action_name = g_key_file_get_string(key_file, group, "action_name", NULL);
     int code = g_key_file_get_integer(key_file, group, "code", NULL);
 
@@ -530,6 +550,9 @@ DeckPlugin *deck_plugin_load(GKeyFile *key_file, char *group) {
 
             if (label != NULL) {
                 new_priv->label = g_strdup(label);
+            }
+            if (color != NULL) {
+                gdk_rgba_parse(&new_priv->label_color, color);
             }
 
             if (g_key_file_has_key(key_file, group, "preview_image_data", NULL)) {
@@ -553,6 +576,12 @@ DeckPluginButtonMode deck_plugin_get_button_mode(DeckPlugin *self) {
     DeckPluginPrivate *priv = deck_plugin_get_instance_private(self);
 
     return priv->action->mode;
+}
+
+char *deck_plugin_get_action_name(DeckPlugin *self) {
+    DeckPluginPrivate *priv = deck_plugin_get_instance_private(self);
+
+    return priv->action->name;
 }
 
 void deck_plugin_set_state(DeckPlugin *self, DeckPluginState state) {

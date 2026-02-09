@@ -1,21 +1,22 @@
 #include "system_plugin.h"
 
-#include "website.h"
-#include "text.h"
 #include "media.h"
+#include "text.h"
+#include "website.h"
 
 DeckPlugin *system_plugin_clone(DeckPlugin *self, int action);
 DeckPlugin *system_plugin_clone_with_code(DeckPlugin *self, int code);
 DeckPluginInfo *system_plugin_info(DeckPlugin *self);
 
 typedef struct _SystemPluginPrivate {
+    gchar *text;
     gchar *url;
     int media_key;
 } SystemPluginPrivate;
 
 G_DEFINE_TYPE_WITH_PRIVATE(SystemPlugin, system_plugin, DECK_TYPE_PLUGIN)
 
-typedef enum { URL = 1, MEDIA_KEY, N_PROPERTIES } SystemPluginProperty;
+typedef enum { URL = 1, TEXT_CONTENT, MEDIA_KEY, N_PROPERTIES } SystemPluginProperty;
 
 static GParamSpec *obj_properties[N_PROPERTIES] = {
     NULL,
@@ -41,6 +42,7 @@ static void system_plugin_init(SystemPlugin *self) {
 
     // Set default values
     priv->url = NULL;
+    priv->text = NULL;
 }
 
 static void system_plugin_finalize(GObject *object) {
@@ -50,6 +52,9 @@ static void system_plugin_finalize(GObject *object) {
     // Free memory if needed
     if (priv->url != NULL) {
         g_free(priv->url);
+    }
+    if (priv->text != NULL) {
+        g_free(priv->text);
     }
 
     G_OBJECT_CLASS(system_plugin_parent_class)->finalize(object);
@@ -66,6 +71,13 @@ static void system_plugin_set_property(GObject *object, guint property_id, const
             g_free(priv->url);
         }
         priv->url = g_strdup(g_value_get_string(value));
+        break;
+    }
+    case TEXT_CONTENT: {
+        if (priv->text != NULL) {
+            g_free(priv->text);
+        }
+        priv->text = g_strdup(g_value_get_string(value));
         break;
     }
     case MEDIA_KEY: {
@@ -86,6 +98,10 @@ static void system_plugin_get_property(GObject *object, guint property_id, GValu
     switch ((SystemPluginProperty)property_id) {
     case URL: {
         g_value_set_string(value, priv->url);
+        break;
+    }
+    case TEXT_CONTENT: {
+        g_value_set_string(value, priv->text);
         break;
     }
     case MEDIA_KEY: {
@@ -115,6 +131,8 @@ static void system_plugin_class_init(SystemPluginClass *klass) {
     object_class->finalize = system_plugin_finalize;
 
     obj_properties[URL] = g_param_spec_string("url", "Url", "Url.", NULL, G_PARAM_READWRITE);
+    obj_properties[TEXT_CONTENT] =
+        g_param_spec_string("text", "Text", "Text content.", NULL, G_PARAM_READWRITE);
     obj_properties[MEDIA_KEY] =
         g_param_spec_uint("media_key", "media_key", "media_key.", 0, 6, 0, G_PARAM_READWRITE);
 
