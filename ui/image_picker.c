@@ -157,7 +157,7 @@ static void image_picker_pick_image(ImagePicker *self, GtkButton *button) {
         filename = gtk_file_chooser_get_filename(chooser);
 
         DeckPluginState state = BUTTON_STATE_NORMAL;
-        if (gtk_toggle_button_get_active(priv->state_active_button)) {
+        if (gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(priv->state_active_button))) {
             state = BUTTON_STATE_SELECTED;
         }
         deck_plugin_set_image_from_file(priv->plugin, state, filename);
@@ -172,7 +172,7 @@ static void image_picker_show_state(ImagePicker *self, GtkToggleButton *button) 
     ImagePickerPrivate *priv = image_picker_get_instance_private(self);
     cairo_surface_t *surface;
 
-    if (gtk_toggle_button_get_active(priv->state_active_button)) {
+    if (gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(priv->state_active_button))) {
         surface = deck_plugin_get_image(priv->plugin, BUTTON_STATE_SELECTED);
     } else {
         surface = deck_plugin_get_image(priv->plugin, BUTTON_STATE_NORMAL);

@@ -2,6 +2,7 @@
 #include <gdk-pixbuf/gdk-pixbuf.h>
 #include <glib-object.h>
 #include <hidapi.h>
+#include <string.h>
 
 #define LTR 0
 #define RTL 1
@@ -57,9 +58,9 @@ static GParamSpec *obj_properties[N_PROPERTIES] = {
 
 static int signals[1];
 
+#include "stream_deck_init_mini.c"
 #include "stream_deck_init_original.c"
 #include "stream_deck_init_original_v2.c"
-#include "stream_deck_init_mini.c"
 #include "stream_deck_init_xl.c"
 
 static void stream_deck_set_property(GObject *object, guint property_id, const GValue *value,
@@ -151,6 +152,7 @@ gpointer read_key_states(gpointer data) {
                 } else {
                     printf("%d released\n", i);
                 }
+                fflush(stdout);
             }
         }
 
@@ -283,22 +285,47 @@ void stream_deck_free(GList *devices) {
 void stream_deck_info(StreamDeck *self) {
     StreamDeckPrivate *priv = stream_deck_get_instance_private(self);
     wchar_t wstr[255];
+    int res;
 
-    printf("Found StreamDeck device\n");
-    hid_get_manufacturer_string(priv->handle, wstr, 255);
-    wprintf(L"Manufacturer String: %s\n", wstr);
+    printf("Found StreamDeck device (handle: %p)\n", (void *)priv->handle);
 
-    // Read the Product String
-    hid_get_product_string(priv->handle, wstr, 255);
-    wprintf(L"Product String: %s\n", wstr);
+    memset(wstr, 0, sizeof(wstr));
+    res = hid_get_manufacturer_string(priv->handle, wstr, 255);
+    printf("hid_get_manufacturer_string returned: %d\n", res);
+    if (res == -1) {
+        printf("HID Error: %ls\n", hid_error(priv->handle));
+    } else {
+        wprintf(L"Manufacturer String: '%ls'\n", wstr);
+    }
 
-    // Read the Serial Number String
-    hid_get_serial_number_string(priv->handle, wstr, 255);
-    wprintf(L"Serial Number String: (%d) %s\n", wstr[0], wstr);
+    memset(wstr, 0, sizeof(wstr));
+    res = hid_get_product_string(priv->handle, wstr, 255);
+    printf("hid_get_product_string returned: %d\n", res);
+    if (res == -1) {
+        printf("HID Error: %ls\n", hid_error(priv->handle));
+    } else {
+        wprintf(L"Product String: '%ls'\n", wstr);
+    }
 
-    // Read Indexed String 1
-    hid_get_indexed_string(priv->handle, 1, wstr, 255);
-    wprintf(L"Indexed String 1: %s\n", wstr);
+    memset(wstr, 0, sizeof(wstr));
+    res = hid_get_serial_number_string(priv->handle, wstr, 255);
+    printf("hid_get_serial_number_string returned: %d\n", res);
+    if (res == -1) {
+        printf("HID Error: %ls\n", hid_error(priv->handle));
+    } else {
+        wprintf(L"Serial Number String: (%d) '%ls'\n", wstr[0], wstr);
+    }
+
+    memset(wstr, 0, sizeof(wstr));
+    res = hid_get_indexed_string(priv->handle, 1, wstr, 255);
+    printf("hid_get_indexed_string returned: %d\n", res);
+    if (res == -1) {
+        printf("HID Error: %ls\n", hid_error(priv->handle));
+    } else {
+        wprintf(L"Indexed String 1: '%ls'\n", wstr);
+    }
+    printf("aca\n");
+    fflush(stdout);
 }
 
 void stream_deck_reset_to_logo(StreamDeck *self) {

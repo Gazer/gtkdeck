@@ -5,9 +5,9 @@
 #include <pango/pangocairo.h>
 
 // Plugins
-#include "test_plugin.h"
-#include "system_plugin/system_plugin.h"
 #include "obs_plugin/obs_plugin.h"
+#include "system_plugin/system_plugin.h"
+#include "test_plugin.h"
 
 static GList *available_plugins = NULL;
 
@@ -184,7 +184,7 @@ static void deck_plugin_set_current_state(DeckPlugin *self) {
     if (priv->state == BUTTON_STATE_SELECTED) {
         surface = priv->preview_image_active;
     } else {
-        surface = priv->preview_image, NULL;
+        surface = priv->preview_image;
     }
 
     int width, height;
@@ -314,7 +314,7 @@ void deck_plugin_get_config_widget(DeckPlugin *self, GtkBox *parent) {
     gchar *text;
     g_object_get(G_OBJECT(self), "label", &text, NULL);
 
-    GtkBox *hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+    GtkWidget *hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
     GtkWidget *label = gtk_label_new("Label");
     GtkWidget *entry = gtk_entry_new();
     if (text != NULL) {

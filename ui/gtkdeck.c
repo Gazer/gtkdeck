@@ -181,11 +181,16 @@ int main(int argc, char **argv) {
 
     printf("Found %d devices\n", g_list_length(devices));
 
+    if (g_list_length(devices) == 0) {
+        return 1;
+    }
+
     stream_deck_info(devices->data);
-    stream_deck_reset_to_logo(devices->data);
+    //stream_deck_reset_to_logo(devices->data);
 
     // Init WS library
-    obs_ws_new();
+    // TODO: we need to do this only if the user try to use the obs plugin
+    // obs_ws_new();
 
     app = gtk_application_new("ar.com.p39.gtkdeck", G_APPLICATION_FLAGS_NONE);
     g_signal_connect(app, "activate", G_CALLBACK(activate), devices);

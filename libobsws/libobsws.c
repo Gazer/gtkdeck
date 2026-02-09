@@ -1,6 +1,8 @@
 #include "libobsws.h"
+#include "transport.h"
 #include "wic.h"
 #include "log.h"
+#include <glib.h>
 
 static gpointer obs_ws_main(gpointer user_data);
 static int uwsc_message_id();
@@ -172,7 +174,7 @@ ObsWs *obs_ws_new() {
 }
 
 GList *obs_ws_get_scenes(ObsWs *self, result_callback callback, gpointer user_data) {
-    ObsWsPrivate *priv = obs_ws_get_instance_private(self);
+    // ObsWsPrivate *priv = obs_ws_get_instance_private(self);
     ObsWsClass *klass = OBS_WS_GET_CLASS(self);
 
     if (klass->inst != NULL) {
@@ -185,7 +187,7 @@ GList *obs_ws_get_scenes(ObsWs *self, result_callback callback, gpointer user_da
 void on_scene_set(JsonObject *json, gpointer user_data) { printf("scene changed\n"); }
 
 void obs_ws_set_current_scene(ObsWs *self, const char *scene) {
-    ObsWsPrivate *priv = obs_ws_get_instance_private(self);
+    // ObsWsPrivate *priv = obs_ws_get_instance_private(self);
     ObsWsClass *klass = OBS_WS_GET_CLASS(self);
 
     if (klass->inst != NULL) {
@@ -199,7 +201,7 @@ void obs_ws_set_current_scene(ObsWs *self, const char *scene) {
 }
 
 void obs_ws_get_current_scene(ObsWs *self, result_callback callback, gpointer user_data) {
-    ObsWsPrivate *priv = obs_ws_get_instance_private(self);
+    // ObsWsPrivate *priv = obs_ws_get_instance_private(self);
     ObsWsClass *klass = OBS_WS_GET_CLASS(self);
 
     if (klass->inst != NULL) {
@@ -257,9 +259,9 @@ static void ws_emit(const char *event, JsonObject *object) {
 
     const char *message_id = json_object_get_string_value(object, "message-id");
     if (message_id == NULL) {
-        g_sprintf(event_to_emit, "%s", event);
+        g_snprintf(event_to_emit, sizeof(event_to_emit), "%s", event);
     } else {
-        g_sprintf(event_to_emit, "emit:message:%s", message_id);
+        g_snprintf(event_to_emit, sizeof(event_to_emit), "emit:message:%s", message_id);
     }
 
     printf("Event: %s\n", event_to_emit);
@@ -306,7 +308,7 @@ void obs_ws_register_callback(const char *callbackId, result_callback callback,
 static void ws_send(struct wic_inst *inst, int message_id, GHashTable *map,
                     result_callback callback, gpointer user_data) {
     char message[10];
-    g_sprintf(message, "%d", message_id);
+    g_snprintf(message, sizeof(message), "%d", message_id);
     g_hash_table_insert(map, "message-id", g_strdup(message));
 
     GHashTableIter iter;
@@ -334,7 +336,7 @@ static void ws_send(struct wic_inst *inst, int message_id, GHashTable *map,
     printf(">> %s\n", data);
 
     char callback_id[50];
-    g_sprintf(callback_id, "emit:message:%d", message_id);
+    g_snprintf(callback_id, sizeof(callback_id), "emit:message:%d", message_id);
 
     if (callback != NULL) {
         obs_ws_register_callback(callback_id, callback, user_data);

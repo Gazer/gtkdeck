@@ -12,7 +12,7 @@ void text_config(DeckPlugin *self, GtkBox *parent) {
     gchar *url;
     g_object_get(G_OBJECT(self), "url", &url, NULL);
 
-    GtkBox *hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+    GtkBox *hbox = GTK_BOX(gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8));
 
     GtkWidget *label = gtk_label_new("Text");
     // GTK_INPUT_PURPOSE_URL

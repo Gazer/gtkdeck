@@ -43,7 +43,7 @@ static void obs_plugin_init(OBSPlugin *self) {
 
     // Set default values
     priv->scene = NULL;
-    priv->obs_connected = NULL;
+    priv->obs_connected = FALSE;
 }
 
 static void obs_plugin_finalize(GObject *object) {
@@ -128,8 +128,8 @@ static void obs_plugin_class_init(OBSPluginClass *klass) {
     g_object_class_install_properties(object_class, N_PROPERTIES, obj_properties);
 }
 
-static obs_plugin_render(DeckPlugin *self, cairo_t *cr, int width, int height) {
-    OBSPluginPrivate *priv = obs_plugin_get_instance_private(self);
+static void obs_plugin_render(DeckPlugin *self, cairo_t *cr, int width, int height) {
+    OBSPluginPrivate *priv = obs_plugin_get_instance_private(OBS_PLUGIN(self));
 
     if (priv->obs_connected == FALSE) {
         cairo_save(cr);
@@ -169,9 +169,9 @@ static void on_scene_changed(JsonObject *json, gpointer user_data) {
     gchar *text = json_object_get_string_value(json, "scene-name");
 
     if (g_strcmp0(text, priv->scene) == 0) {
-        deck_plugin_set_state(self, BUTTON_STATE_SELECTED);
+        deck_plugin_set_state(DECK_PLUGIN(self), BUTTON_STATE_SELECTED);
     } else {
-        deck_plugin_set_state(self, BUTTON_STATE_NORMAL);
+        deck_plugin_set_state(DECK_PLUGIN(self), BUTTON_STATE_NORMAL);
     }
 }
 
@@ -185,13 +185,12 @@ static void on_ws_connected(JsonObject *json, gpointer user_data) {
     deck_plugin_reset(plugin);
 
     if (connected) {
-        ObsWs *ws = obs_plugin_new();
+        ObsWs *ws = obs_ws_new();
         obs_ws_get_current_scene(ws, NULL, NULL);
     }
 }
 
 DeckPlugin *obs_plugin_clone(DeckPlugin *self, int action) {
-    ObsWs *ws = obs_plugin_new();
     DeckPlugin *clone = g_object_new(OBS_TYPE_PLUGIN, "name", "OBSPlugin", "action",
                                      &OBS_PLUGIN_INFO.actions[action], NULL);
 
