@@ -55,9 +55,20 @@ Unplug and replug the device and it should be usable
 
 ### Install dependencies
 
+#### Base requirements (Ubuntu/Debian)
+
 ```
 $> apt install xvkbd meson libusb-1.0-0-dev libhidapi-dev libhidapi-libusb0 libgtk-3-dev libev-dev libjson-glib-dev
 ```
+
+#### Media Control (Recommended)
+
+For better media control support (Universal for Wayland/X11), install `playerctl`. If not found, it will fallback to `xvkbd`.
+
+* **Ubuntu/Debian:** `sudo apt install playerctl`
+* **Fedora:** `sudo dnf install playerctl`
+* **Arch Linux:** `sudo pacman -S playerctl`
+* **OpenSUSE:** `sudo zypper install playerctl`
 
 ### Compile
 

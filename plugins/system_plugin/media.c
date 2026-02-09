@@ -59,14 +59,67 @@ void media_config(DeckPlugin *self, GtkBox *parent) {
 static char *keys[] = {"XF86AudioPrev", "XF86AudioPlay",        "XF86AudioNext",       "XF86Stop",
                        "XF86AudioMute", "XF86AudioRaiseVolume", "XF86AudioLowerVolume"};
 
+static void run_command(const char *cmd) {
+    gint exit_status;
+    GError *error = NULL;
+    if (!g_spawn_command_line_sync(cmd, NULL, NULL, &exit_status, &error)) {
+        g_warning("Failed to run command '%s': %s", cmd, error->message);
+        g_error_free(error);
+    }
+}
+
 void media_exec(DeckPlugin *self) {
     int current_key = 0;
-    gint exit_status;
-
     g_object_get(G_OBJECT(self), "media_key", &current_key, NULL);
 
+    // Check for playerctl for media keys (0-3)
+    if (current_key <= 3) {
+        g_autofree char *playerctl_path = g_find_program_in_path("playerctl");
+        if (playerctl_path) {
+            const char *args[] = {"previous", "play-pause", "next", "stop"};
+            g_autofree char *cmd = g_strdup_printf("%s %s", playerctl_path, args[current_key]);
+            run_command(cmd);
+            return;
+        }
+    }
+
+    // Check for volume keys (4-6)
+    if (current_key >= 4) {
+        // Try wpctl (WirePlumber)
+        g_autofree char *wpctl_path = g_find_program_in_path("wpctl");
+        if (wpctl_path) {
+            const char *args[] = {"set-mute @DEFAULT_AUDIO_SINK@ toggle",
+                                  "set-volume @DEFAULT_AUDIO_SINK@ 5%+",
+                                  "set-volume @DEFAULT_AUDIO_SINK@ 5%-"};
+            g_autofree char *cmd = g_strdup_printf("%s %s", wpctl_path, args[current_key - 4]);
+            run_command(cmd);
+            return;
+        }
+
+        // Try pactl (PulseAudio)
+        g_autofree char *pactl_path = g_find_program_in_path("pactl");
+        if (pactl_path) {
+            const char *args[] = {"set-sink-mute @DEFAULT_SINK@ toggle",
+                                  "set-sink-volume @DEFAULT_SINK@ +5%",
+                                  "set-sink-volume @DEFAULT_SINK@ -5%"};
+            g_autofree char *cmd = g_strdup_printf("%s %s", pactl_path, args[current_key - 4]);
+            run_command(cmd);
+            return;
+        }
+
+        // Try amixer (ALSA)
+        g_autofree char *amixer_path = g_find_program_in_path("amixer");
+        if (amixer_path) {
+            const char *args[] = {"set Master toggle", "set Master 5%+", "set Master 5%-"};
+            g_autofree char *cmd = g_strdup_printf("%s %s", amixer_path, args[current_key - 4]);
+            run_command(cmd);
+            return;
+        }
+    }
+
+    // Fallback to xvkbd
     g_autofree gchar *command = g_strdup_printf("xvkbd -text \"\\[%s]\"", keys[current_key]);
-    g_spawn_command_line_sync(command, NULL, NULL, &exit_status, NULL);
+    run_command(command);
 }
 
 void media_save(DeckPlugin *self, char *group, GKeyFile *key_file) {
