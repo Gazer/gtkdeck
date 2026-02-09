@@ -30,11 +30,11 @@ jobs:
 
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v2
+      uses: actions/checkout@v4
 
     # Initializes the CodeQL tools for scanning.
     - name: Initialize CodeQL
-      uses: github/codeql-action/init@v1
+      uses: github/codeql-action/init@v3
       with:
         languages: ${{ matrix.language }}
         # If you wish to specify custom queries, you can do so here or in a config file.
@@ -44,7 +44,8 @@ jobs:
 
     - name: Install Deps
       run: |
-        sudo apt install xvkbd meson libusb-1.0-0-dev libhidapi-dev libhidapi-libusb0 libgtk-3-dev libev-dev libjson-glib-dev
+        sudo apt-get update
+        sudo apt-get install -y xvkbd meson libusb-1.0-0-dev libhidapi-dev libhidapi-libusb0 libgtk-3-dev libev-dev libjson-glib-dev libayatana-appindicator3-dev
 
     - name: Build
       run: |
@@ -63,4 +64,4 @@ jobs:
     #   make release
 
     - name: Perform CodeQL Analysis
-      uses: github/codeql-action/analyze@v1
+      uses: github/codeql-action/analyze@v3
