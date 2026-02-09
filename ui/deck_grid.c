@@ -249,6 +249,8 @@ void on_grid_drag_data_received(GtkWidget *wgt, GdkDragContext *context, int x, 
                 grid->priv->actions[key] = plugin;
 
                 add_plugin_button(grid, key, deck, plugin, left, top);
+
+                g_signal_emit(G_OBJECT(grid), deck_grid_signals[0], 0, plugin);
             }
         }
     }
