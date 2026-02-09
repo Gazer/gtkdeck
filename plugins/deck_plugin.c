@@ -17,6 +17,7 @@ typedef struct _DeckPluginPrivate {
 
     char *label;
     GdkRGBA label_color;
+    DeckPluginLabelPos label_pos;
     cairo_surface_t *surface;
     cairo_surface_t *preview_image;
     cairo_surface_t *preview_image_active;
@@ -124,6 +125,7 @@ static void deck_plugin_init(DeckPlugin *self) {
     priv->label_color.red = 0;
     priv->label_color.green = 0;
     priv->label_color.blue = 0;
+    priv->label_pos = LABEL_POS_BOTTOM;
 }
 
 static void deck_plugin_finalize(GObject *object) {
@@ -233,7 +235,19 @@ static void deck_plugin_set_current_state(DeckPlugin *self) {
         cairo_set_source_rgb(cr, priv->label_color.red, priv->label_color.green, priv->label_color.blue);
         pango_cairo_update_layout(cr, layout);
         pango_layout_get_size(layout, &width, &height);
-        cairo_move_to(cr, 300 / 2 - width / PANGO_SCALE / 2, 300 - height / PANGO_SCALE);
+
+        int x = 300 / 2 - width / PANGO_SCALE / 2;
+        int y;
+
+        if (priv->label_pos == LABEL_POS_TOP) {
+            y = 0;
+        } else if (priv->label_pos == LABEL_POS_CENTER) {
+            y = 300 / 2 - height / PANGO_SCALE / 2;
+        } else {
+            y = 300 - height / PANGO_SCALE;
+        }
+
+        cairo_move_to(cr, x, y);
         pango_cairo_show_layout(cr, layout);
         cairo_restore(cr);
     }
@@ -340,6 +354,18 @@ void on_label_color_selected(GtkColorButton *widget, gpointer user_data) {
     deck_plugin_reset(self);
 }
 
+void on_label_pos_toggled(GtkToggleButton *widget, gpointer user_data) {
+    if (!gtk_toggle_button_get_active(widget)) {
+        return;
+    }
+
+    DeckPlugin *self = DECK_PLUGIN(user_data);
+    DeckPluginPrivate *priv = deck_plugin_get_instance_private(self);
+    DeckPluginLabelPos pos = (DeckPluginLabelPos)GPOINTER_TO_INT(g_object_get_data(G_OBJECT(widget), "pos_val"));
+
+    priv->label_pos = pos;
+    deck_plugin_reset(self);
+}
 
 void deck_plugin_get_config_widget(DeckPlugin *self, GtkBox *parent) {
     DeckPluginPrivate *priv = deck_plugin_get_instance_private(self);
@@ -357,10 +383,41 @@ void deck_plugin_get_config_widget(DeckPlugin *self, GtkBox *parent) {
     gtk_color_chooser_set_rgba(GTK_COLOR_CHOOSER(color_picker), &(priv->label_color));
     g_signal_connect(G_OBJECT(color_picker), "color-set", G_CALLBACK(on_label_color_selected), self);
 
+    GtkWidget *pos_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+    gtk_style_context_add_class(gtk_widget_get_style_context(pos_box), "linked");
+
+    GtkWidget *btn_top = gtk_radio_button_new_with_label(NULL, "⎻");
+    gtk_toggle_button_set_mode(GTK_TOGGLE_BUTTON(btn_top), FALSE);
+    g_object_set_data(G_OBJECT(btn_top), "pos_val", GINT_TO_POINTER(LABEL_POS_TOP));
+    g_signal_connect(G_OBJECT(btn_top), "toggled", G_CALLBACK(on_label_pos_toggled), self);
+    gtk_box_pack_start(GTK_BOX(pos_box), btn_top, FALSE, FALSE, 0);
+
+    GtkWidget *btn_center =
+        gtk_radio_button_new_with_label_from_widget(GTK_RADIO_BUTTON(btn_top), "─");
+    gtk_toggle_button_set_mode(GTK_TOGGLE_BUTTON(btn_center), FALSE);
+    g_object_set_data(G_OBJECT(btn_center), "pos_val", GINT_TO_POINTER(LABEL_POS_CENTER));
+    g_signal_connect(G_OBJECT(btn_center), "toggled", G_CALLBACK(on_label_pos_toggled), self);
+    gtk_box_pack_start(GTK_BOX(pos_box), btn_center, FALSE, FALSE, 0);
+
+    GtkWidget *btn_bottom =
+        gtk_radio_button_new_with_label_from_widget(GTK_RADIO_BUTTON(btn_top), "⎼");
+    gtk_toggle_button_set_mode(GTK_TOGGLE_BUTTON(btn_bottom), FALSE);
+    g_object_set_data(G_OBJECT(btn_bottom), "pos_val", GINT_TO_POINTER(LABEL_POS_BOTTOM));
+    g_signal_connect(G_OBJECT(btn_bottom), "toggled", G_CALLBACK(on_label_pos_toggled), self);
+    gtk_box_pack_start(GTK_BOX(pos_box), btn_bottom, FALSE, FALSE, 0);
+
+    if (priv->label_pos == LABEL_POS_TOP)
+        gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(btn_top), TRUE);
+    else if (priv->label_pos == LABEL_POS_CENTER)
+        gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(btn_center), TRUE);
+    else
+        gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(btn_bottom), TRUE);
+
     g_signal_connect(G_OBJECT(entry), "changed", G_CALLBACK(label_text_changed), self);
 
     gtk_box_pack_start(GTK_BOX(hbox), label, FALSE, TRUE, 5);
     gtk_box_pack_start(GTK_BOX(hbox), entry, TRUE, TRUE, 5);
+    gtk_box_pack_start(GTK_BOX(hbox), pos_box, FALSE, TRUE, 5);
     gtk_box_pack_start(GTK_BOX(hbox), color_picker, FALSE, TRUE, 5);
 
     gtk_box_pack_start(parent, GTK_WIDGET(hbox), TRUE, FALSE, 5);
@@ -521,6 +578,7 @@ void deck_plugin_save(DeckPlugin *self, int position, GKeyFile *key_file) {
     }
     g_autofree char *color = gdk_rgba_to_string(&priv->label_color);
     g_key_file_set_string(key_file, group, "label_color", color);
+    g_key_file_set_integer(key_file, group, "label_pos", (int)priv->label_pos);
 
     priv->action->save(self, group, key_file);
 }
@@ -533,6 +591,7 @@ DeckPlugin *deck_plugin_load(GKeyFile *key_file, char *group) {
     g_autofree char *color = g_key_file_get_string(key_file, group, "label_color", NULL);
     g_autofree char *action_name = g_key_file_get_string(key_file, group, "action_name", NULL);
     int code = g_key_file_get_integer(key_file, group, "code", NULL);
+    DeckPluginLabelPos label_pos = (DeckPluginLabelPos)g_key_file_get_integer(key_file, group, "label_pos", NULL);
 
     printf("  Name      : %s\n", name);
     printf("  ActionName: %s\n", action_name);
@@ -553,6 +612,9 @@ DeckPlugin *deck_plugin_load(GKeyFile *key_file, char *group) {
             }
             if (color != NULL) {
                 gdk_rgba_parse(&new_priv->label_color, color);
+            }
+            if (g_key_file_has_key(key_file, group, "label_pos", NULL)) {
+                new_priv->label_pos = label_pos;
             }
 
             if (g_key_file_has_key(key_file, group, "preview_image_data", NULL)) {

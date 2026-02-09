@@ -27,6 +27,12 @@ typedef enum _DeckPluginState {
     BUTTON_STATE_SELECTED,
 } DeckPluginState;
 
+typedef enum _DeckPluginLabelPos {
+    LABEL_POS_TOP,
+    LABEL_POS_CENTER,
+    LABEL_POS_BOTTOM,
+} DeckPluginLabelPos;
+
 typedef struct _DeckPluginAction {
     DeckPluginButtonMode mode;
     gchar *name;
