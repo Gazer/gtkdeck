@@ -1,9 +1,9 @@
-#include "deck_plugin.h"
-#include "streamdeck.h"
-#include "test_plugin.h"
 #include "deck_grid.h"
+#include "deck_plugin.h"
 #include "image_picker.h"
 #include "libobsws.h"
+#include "streamdeck.h"
+#include "test_plugin.h"
 #include <gtk/gtk.h>
 #include <unistd.h>
 
@@ -12,6 +12,8 @@ void save_config(DeckGrid *grid, StreamDeck *deck);
 GList *plugin_list = NULL;
 GtkBox *config_row;
 GtkWidget *global_grid;
+GtkWidget *delete_button;
+DeckPlugin *current_plugin = NULL;
 
 void on_drag_data_get(GtkWidget *widget, GdkDragContext *drag_context, GtkSelectionData *sdata,
                       guint info, guint time, gpointer user_data) {
@@ -99,6 +101,9 @@ void show_config(GtkButton *button, DeckPlugin *plugin, gpointer data) {
     GList *children;
     GtkWidget *config_area;
 
+    // Store the current plugin being configured
+    current_plugin = plugin;
+
     // Show Preview at the left
     children = gtk_container_get_children(GTK_CONTAINER(config_row));
     while (children != NULL) {
@@ -131,6 +136,25 @@ static void init_device_info(GtkBuilder *builder, StreamDeck *deck) {
     gtk_label_set_text(label, g_string_free(text, FALSE));
 }
 
+static void on_delete_clicked(GtkButton *button, gpointer user_data) {
+    if (current_plugin == NULL) {
+        return;
+    }
+
+    int key = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(current_plugin), "key"));
+    deck_grid_remove_button(DECK_GRID(global_grid), key);
+
+    // Clear the config panel
+    GList *children = gtk_container_get_children(GTK_CONTAINER(config_row));
+    while (children != NULL) {
+        GtkWidget *child = GTK_WIDGET(children->data);
+        gtk_widget_destroy(child);
+        children = children->next;
+    }
+
+    current_plugin = NULL;
+}
+
 static void activate(GtkApplication *app, gpointer user_data) {
     GtkBuilder *builder;
     GtkWidget *window;
@@ -152,6 +176,9 @@ static void activate(GtkApplication *app, gpointer user_data) {
     gtk_window_set_title(GTK_WINDOW(window), "Gtk Deck");
 
     config_row = GTK_BOX(gtk_builder_get_object(builder, "config_row"));
+
+    delete_button = GTK_WIDGET(gtk_builder_get_object(builder, "delete_button"));
+    g_signal_connect(delete_button, "clicked", G_CALLBACK(on_delete_clicked), NULL);
 
     plugin_tree = GTK_TREE_VIEW(gtk_builder_get_object(builder, "plugin_list"));
     init_plugin_tree(plugin_tree);

@@ -1,6 +1,6 @@
-#include <gtk/gtk.h>
-#include "streamdeck.h"
 #include "deck_plugin.h"
+#include "streamdeck.h"
+#include <gtk/gtk.h>
 
 #ifndef __DECK_GRID_H__
 
@@ -36,11 +36,15 @@ struct _DeckGridClass {
     GtkGridClass parent_class;
 };
 
+GType deck_grid_get_type(void);
+
 GtkWidget *deck_grid_new(StreamDeck *deck);
 
 void deck_grid_set_button(DeckGrid *self, int key, DeckPlugin *plugin);
 
 DeckPlugin *deck_grid_get_button(DeckGrid *self, int key);
+
+void deck_grid_remove_button(DeckGrid *self, int key);
 
 G_END_DECLS
 

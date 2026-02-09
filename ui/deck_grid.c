@@ -335,3 +335,20 @@ DeckPlugin *deck_grid_get_button(DeckGrid *self, int key) {
 
     return self->priv->actions[key];
 }
+
+void deck_grid_remove_button(DeckGrid *self, int key) {
+    g_return_if_fail(DECK_IS_GRID(self));
+
+    int columns = self->priv->columns;
+    int left = key % columns;
+    int top = key / columns;
+
+    // Free the plugin if it exists
+    if (self->priv->actions[key] != NULL) {
+        g_object_unref(G_OBJECT(self->priv->actions[key]));
+        self->priv->actions[key] = NULL;
+    }
+
+    // Redraw the cell as empty
+    add_plugin_button(self, key, self->priv->deck, NULL, left, top);
+}
