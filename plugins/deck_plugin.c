@@ -192,8 +192,18 @@ static void deck_plugin_set_current_state(DeckPlugin *self) {
     cairo_t *cr;
 
     if (surface != NULL) {
-        new_surface = cairo_surface_create_similar(surface, CAIRO_CONTENT_COLOR_ALPHA, 300, 300);
+        // Create destination surface 300x300
+        new_surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 300, 300);
         cr = cairo_create(new_surface);
+
+        // Scale the source surface to fit 300x300
+        int src_w = cairo_image_surface_get_width(surface);
+        int src_h = cairo_image_surface_get_height(surface);
+
+        if (src_w > 0 && src_h > 0) {
+            cairo_scale(cr, 300.0 / src_w, 300.0 / src_h);
+        }
+
         // Paint the base image
         cairo_set_source_surface(cr, surface, 0, 0);
         cairo_paint(cr);
