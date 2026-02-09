@@ -37,7 +37,7 @@
               <placeholder/>
             </child>
             <child>
-              <object class="GtkBox">
+              <object class="GtkBox" id="config_container">
                 <property name="visible">True</property>
                 <property name="can_focus">False</property>
                 <property name="margin_bottom">8</property>

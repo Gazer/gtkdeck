@@ -13,6 +13,7 @@ GList *plugin_list = NULL;
 GtkBox *config_row;
 GtkWidget *global_grid;
 GtkWidget *delete_button;
+GtkWidget *config_container;
 DeckPlugin *current_plugin = NULL;
 
 void on_drag_data_get(GtkWidget *widget, GdkDragContext *drag_context, GtkSelectionData *sdata,
@@ -101,6 +102,12 @@ void show_config(GtkButton *button, DeckPlugin *plugin, gpointer data) {
     GList *children;
     GtkWidget *config_area;
 
+    if (plugin == NULL) {
+        current_plugin = NULL;
+        gtk_widget_hide(config_container);
+        return;
+    }
+
     // Store the current plugin being configured
     current_plugin = plugin;
 
@@ -124,6 +131,7 @@ void show_config(GtkButton *button, DeckPlugin *plugin, gpointer data) {
     deck_plugin_get_config_widget(DECK_PLUGIN(plugin), GTK_BOX(config_area));
 
     gtk_widget_show_all(GTK_WIDGET(config_row));
+    gtk_widget_show(config_container);
 }
 
 static void init_device_info(GtkBuilder *builder, StreamDeck *deck) {
@@ -153,6 +161,7 @@ static void on_delete_clicked(GtkButton *button, gpointer user_data) {
     }
 
     current_plugin = NULL;
+    gtk_widget_hide(config_container);
 }
 
 static void activate(GtkApplication *app, gpointer user_data) {
@@ -176,6 +185,7 @@ static void activate(GtkApplication *app, gpointer user_data) {
     gtk_window_set_title(GTK_WINDOW(window), "Gtk Deck");
 
     config_row = GTK_BOX(gtk_builder_get_object(builder, "config_row"));
+    config_container = GTK_WIDGET(gtk_builder_get_object(builder, "config_container"));
 
     delete_button = GTK_WIDGET(gtk_builder_get_object(builder, "delete_button"));
     g_signal_connect(delete_button, "clicked", G_CALLBACK(on_delete_clicked), NULL);
@@ -197,6 +207,7 @@ static void activate(GtkApplication *app, gpointer user_data) {
     gtk_application_add_window(app, GTK_WINDOW(window));
 
     gtk_widget_show_all(window);
+    gtk_widget_hide(config_container);
 }
 
 int main(int argc, char **argv) {

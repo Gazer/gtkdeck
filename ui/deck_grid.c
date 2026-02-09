@@ -167,7 +167,8 @@ static void on_deck_preview_update_app(GObject *gobject, GParamSpec *pspec, gpoi
 }
 
 static void button_pressed(GtkButton *button, gpointer data) {
-    DeckPlugin *plugin = DECK_PLUGIN(g_object_get_data(G_OBJECT(button), "plugin"));
+    gpointer ptr = g_object_get_data(G_OBJECT(button), "plugin");
+    DeckPlugin *plugin = ptr ? DECK_PLUGIN(ptr) : NULL;
 
     g_signal_emit(G_OBJECT(data), deck_grid_signals[0], 0, plugin);
 }
@@ -201,11 +202,12 @@ static void add_plugin_button(DeckGrid *grid, int key, StreamDeck *deck, DeckPlu
         g_signal_connect(plugin, "notify::preview", G_CALLBACK(on_deck_preview_update_device),
                          deck);
         g_signal_connect(plugin, "notify::preview", G_CALLBACK(on_deck_preview_update_app), widget);
-        g_object_set_data(G_OBJECT(box), "plugin", plugin);
-        g_signal_connect(box, "clicked", G_CALLBACK(button_pressed), grid);
 
         on_deck_preview_update_device(G_OBJECT(plugin), NULL, deck);
     }
+
+    g_object_set_data(G_OBJECT(box), "plugin", plugin);
+    g_signal_connect(box, "clicked", G_CALLBACK(button_pressed), grid);
 
     gtk_drag_dest_set(box, GTK_DEST_DEFAULT_ALL, deck_grid_entries, 1, GDK_ACTION_COPY);
     g_signal_connect(box, "drag-data-received", G_CALLBACK(on_grid_drag_data_received), grid);
