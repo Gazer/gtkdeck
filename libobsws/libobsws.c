@@ -379,9 +379,6 @@ static void ws_emit(const char *event, JsonObject *object) {
         return;
     }
 
-    GHashTableIter iter;
-
-    gpointer key, value;
     char event_to_emit[50];
 
     const char *request_id = json_object_get_string_value(object, "requestId");
@@ -400,53 +397,43 @@ static void ws_emit(const char *event, JsonObject *object) {
     printf("Event: %s\n", event_to_emit);
 
     LOCK_WS();
-    g_hash_table_iter_init(&iter, klass->callbacks);
-    printf("iter 1 .... \n");
-    while (g_hash_table_iter_next(&iter, &key, &value)) {
-        if (g_strcmp0(event_to_emit, key) == 0) {
-            printf("got callback for %s ... calling\n", event_to_emit);
-            GList *callbacks = (GList *)value;
-            if (callbacks != NULL) {
-                GList *user_datas;
-                g_hash_table_lookup_extended(klass->callbacks_data, event_to_emit, NULL,
-                                             (gpointer *)&user_datas);
+    GList *callback_list = NULL;
+    GList *callback_data_list = NULL;
+    g_hash_table_lookup_extended(klass->callbacks, event_to_emit, NULL, (gpointer *)&callback_list);
+    g_hash_table_lookup_extended(klass->callbacks_data, event_to_emit, NULL, (gpointer *)&callback_data_list);
+    printf("got callback for %s ... calling\n", event_to_emit);
+    while (callback_list!= NULL) {
+        result_callback callback = (result_callback)callback_list->data;
+        gpointer user_data = callback_data_list->data;
 
-                while (callbacks != NULL) {
-                    result_callback callback = (result_callback)callbacks->data;
-                    gpointer user_data = user_datas->data;
+        CallbackData *cb_data = g_new0(CallbackData, 1);
+        cb_data->callback = callback;
+        cb_data->object = object ? json_object_ref(object) : NULL;
+        cb_data->user_data = user_data;
+        g_idle_add(invoke_callback_idle, cb_data);
 
-                    // Schedule callback on main thread using g_idle_add
-                    CallbackData *cb_data = g_new0(CallbackData, 1);
-                    cb_data->callback = callback;
-                    cb_data->object = object ? json_object_ref(object) : NULL;
-                    cb_data->user_data = user_data;
-                    g_idle_add(invoke_callback_idle, cb_data);
-
-                    callbacks = callbacks->next;
-                    user_datas = user_datas->next;
-                }
-            }
-        }
+        callback_list= callback_list->next;
+        callback_data_list= callback_data_list->next;
     }
     UNLOCK_WS();
 }
 
-void obs_ws_register_callback(ObsWs *self, const char *callbackId, result_callback callback,
-                              gpointer user_data) {
+void obs_ws_register_callback(ObsWs *self, const char *callbackId, result_callback callback, gpointer user_data) {
     ObsWsClass *klass = OBS_WS_GET_CLASS(self);
 
     LOCK_WS();
     GList *callback_list = NULL;
     GList *callback_data_list = NULL;
-    g_hash_table_lookup_extended(klass->callbacks, callbackId, NULL, (gpointer *)&callback_list);
-    g_hash_table_lookup_extended(klass->callbacks_data, callbackId, NULL,
-                                 (gpointer *)&callback_data_list);
+    gboolean exists = g_hash_table_lookup_extended(klass->callbacks, callbackId, NULL, (gpointer *)&callback_list);
+    g_hash_table_lookup_extended(klass->callbacks_data, callbackId, NULL, (gpointer *)&callback_data_list);
 
     callback_list = g_list_append(callback_list, callback);
     callback_data_list = g_list_append(callback_data_list, user_data);
 
-    g_hash_table_insert(klass->callbacks, g_strdup(callbackId), callback_list);
-    g_hash_table_insert(klass->callbacks_data, g_strdup(callbackId), callback_data_list);
+    if (!exists) {
+        g_hash_table_insert(klass->callbacks, g_strdup(callbackId), callback_list);
+        g_hash_table_insert(klass->callbacks_data, g_strdup(callbackId), callback_data_list);
+    }
 
     if (g_strcmp0(callbackId, "Identified") == 0 && klass->inst != NULL) {
         printf("Already connected, invoking Identified callback immediately\n");

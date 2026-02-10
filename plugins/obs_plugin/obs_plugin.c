@@ -81,6 +81,7 @@ static void obs_plugin_set_property(GObject *object, guint property_id, const GV
         break;
     }
 }
+
 static void obs_plugin_get_property(GObject *object, guint property_id, GValue *value,
                                     GParamSpec *pspec) {
     OBSPlugin *self = OBS_PLUGIN(object);
@@ -242,6 +243,7 @@ DeckPlugin *obs_plugin_clone(DeckPlugin *self, int action) {
                                      &OBS_PLUGIN_INFO.actions[action], NULL);
 
     ObsWs *ws = obs_ws_new();
+    printf("registering callback for CurrentProgramSceneChanged %p\n", clone);
     obs_ws_register_callback(ws, "CurrentProgramSceneChanged", on_scene_changed, clone);
     obs_ws_register_callback(ws, "Identified", on_ws_connected, clone);
 
