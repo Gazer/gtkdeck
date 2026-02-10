@@ -35,7 +35,9 @@ ObsWs *obs_ws_new();
 GList *obs_ws_get_scenes(ObsWs *, result_callback callback, gpointer user_data);
 void obs_ws_set_current_scene(ObsWs *self, const char *scene);
 void obs_ws_get_current_scene(ObsWs *self, result_callback callback, gpointer user_data);
-void obs_ws_register_callback(const char *callbackId, result_callback callback, gpointer user_data);
+void obs_ws_register_callback(ObsWs *self, const char *callbackId, result_callback callback,
+                              gpointer user_data);
+void obs_ws_set_password(const gchar *password);
 
 const gchar *json_object_get_string_value(JsonObject *json, const gchar *key);
 const gboolean json_object_get_boolean_value(JsonObject *json, const gchar *key);

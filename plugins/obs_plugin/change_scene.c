@@ -1,5 +1,5 @@
-#include "../deck_plugin.h"
 #include "../../libobsws/libobsws.h"
+#include "../deck_plugin.h"
 
 void read_scene_name(JsonArray *array, guint index_, JsonNode *json, gpointer user_data) {
     GList **list = (GList **)user_data;
@@ -17,32 +17,59 @@ void read_scene_name(JsonArray *array, guint index_, JsonNode *json, gpointer us
 }
 
 void on_scene_list(JsonObject *json, gpointer user_data) {
-    char *current_scene;
+    char *current_scene = NULL;
     GList *scenes = NULL;
+
+    // Verificar que user_data sea válido
+    if (user_data == NULL || !GTK_IS_LIST_STORE(user_data)) {
+        printf("ERROR: Invalid store in on_scene_list\n");
+        return;
+    }
+
     printf("Store %p\n", user_data);
     GtkListStore *store = GTK_LIST_STORE(user_data);
 
-    if (json_object_has_member(json, "current-scene")) {
-        JsonNode *node = json_object_get_member(json, "current-scene");
-        if (JSON_NODE_HOLDS_VALUE(node)) {
-            current_scene = json_node_get_string(node);
+    // OBS v5: los datos están en responseData
+    JsonObject *response_data = json;
+    if (json_object_has_member(json, "responseData")) {
+        JsonNode *response_node = json_object_get_member(json, "responseData");
+        if (JSON_NODE_HOLDS_OBJECT(response_node)) {
+            response_data = json_node_get_object(response_node);
         }
     }
-    if (json_object_has_member(json, "scenes")) {
-        JsonNode *node = json_object_get_member(json, "scenes");
+
+    // OBS v5: current-scene -> currentProgramSceneName
+    if (json_object_has_member(response_data, "currentProgramSceneName")) {
+        JsonNode *node = json_object_get_member(response_data, "currentProgramSceneName");
+        if (JSON_NODE_HOLDS_VALUE(node)) {
+            current_scene = (char *)json_node_get_string(node);
+            printf("Current scene: %s\n", current_scene ? current_scene : "(null)");
+        }
+    }
+
+    // OBS v5: Las escenas tienen sceneName en lugar de name
+    if (json_object_has_member(response_data, "scenes")) {
+        JsonNode *node = json_object_get_member(response_data, "scenes");
         if (JSON_NODE_HOLDS_ARRAY(node)) {
             JsonArray *array = json_node_get_array(node);
-            json_array_foreach_element(array, read_scene_name, &scenes);
+            guint len = json_array_get_length(array);
+            printf("Got %u scenes\n", len);
 
-            GList *l = scenes;
-            int selected_index = -1;
-            int index = 0;
             GtkTreeIter iter;
-            while (l != NULL) {
-                gtk_list_store_append(store, &iter);
-                gtk_list_store_set(store, &iter, 0, l->data, -1);
-                l = l->next;
-                index++;
+            for (guint i = 0; i < len; i++) {
+                JsonNode *scene_node = json_array_get_element(array, i);
+                if (JSON_NODE_HOLDS_OBJECT(scene_node)) {
+                    JsonObject *scene_obj = json_node_get_object(scene_node);
+                    if (json_object_has_member(scene_obj, "sceneName")) {
+                        JsonNode *name_node = json_object_get_member(scene_obj, "sceneName");
+                        if (JSON_NODE_HOLDS_VALUE(name_node)) {
+                            const char *name = json_node_get_string(name_node);
+                            printf("Scene: %s\n", name);
+                            gtk_list_store_append(store, &iter);
+                            gtk_list_store_set(store, &iter, 0, name, -1);
+                        }
+                    }
+                }
             }
         }
     }

@@ -1,8 +1,24 @@
 #include "libobsws.h"
+#include "log.h"
 #include "transport.h"
 #include "wic.h"
-#include "log.h"
 #include <glib.h>
+#include <openssl/buffer.h>
+#include <openssl/evp.h>
+#include <openssl/sha.h>
+
+// OBS WebSocket v5 OpCodes
+#define OPCODE_HELLO 0
+#define OPCODE_IDENTIFY 1
+#define OPCODE_IDENTIFIED 2
+#define OPCODE_REIDENTIFY 3
+#define OPCODE_EVENT 5
+#define OPCODE_REQUEST 6
+#define OPCODE_REQUEST_RESPONSE 7
+#define OPCODE_REQUEST_BATCH 8
+#define OPCODE_REQUEST_BATCH_RESPONSE 9
+
+#define RPC_VERSION 1
 
 static gpointer obs_ws_main(gpointer user_data);
 static int uwsc_message_id();
@@ -134,8 +150,10 @@ static void obs_ws_class_init(ObsWsClass *klass) {
     klass->heartbeat = obs_ws_heartbeat;
 
     klass->thread = g_thread_new("obs", obs_ws_main, klass);
-    klass->callbacks = g_hash_table_new(g_str_hash, g_str_equal);
-    klass->callbacks_data = g_hash_table_new(g_str_hash, g_str_equal);
+    klass->callbacks =
+        g_hash_table_new_full(g_str_hash, g_str_equal, g_free, (GDestroyNotify)g_list_free);
+    klass->callbacks_data =
+        g_hash_table_new_full(g_str_hash, g_str_equal, g_free, (GDestroyNotify)g_list_free);
 
     obj_properties[PROFILE] =
         g_param_spec_string("profile", "Profile", "Profile.", NULL, G_PARAM_READWRITE);
@@ -164,8 +182,18 @@ static void obs_ws_heartbeat(const gchar *profile, const gchar *scene) {
 
 // Public Members
 static ObsWs *global_ws = NULL;
+static gchar *auth_password = NULL;
+static GMutex ws_mutex;
+static gboolean mutex_initialized = FALSE;
+
+#define LOCK_WS() g_mutex_lock(&ws_mutex)
+#define UNLOCK_WS() g_mutex_unlock(&ws_mutex)
 
 ObsWs *obs_ws_new() {
+    if (!mutex_initialized) {
+        g_mutex_init(&ws_mutex);
+        mutex_initialized = TRUE;
+    }
     if (global_ws == NULL) {
         printf("create .....................\n");
         global_ws = g_object_new(OBS_TYPE_WS, NULL);
@@ -173,12 +201,24 @@ ObsWs *obs_ws_new() {
     return global_ws;
 }
 
+void obs_ws_set_password(const gchar *password) {
+    if (auth_password != NULL) {
+        g_free(auth_password);
+    }
+    auth_password = g_strdup(password);
+}
+
 GList *obs_ws_get_scenes(ObsWs *self, result_callback callback, gpointer user_data) {
     // ObsWsPrivate *priv = obs_ws_get_instance_private(self);
     ObsWsClass *klass = OBS_WS_GET_CLASS(self);
 
-    if (klass->inst != NULL) {
-        ws_send_command(klass->inst, "GetSceneList", callback, user_data);
+    // Get inst pointer with lock, then release before sending
+    LOCK_WS();
+    struct wic_inst *inst = klass->inst;
+    UNLOCK_WS();
+
+    if (inst != NULL) {
+        ws_send_command(inst, "GetSceneList", callback, user_data);
     }
 
     return NULL;
@@ -190,27 +230,43 @@ void obs_ws_set_current_scene(ObsWs *self, const char *scene) {
     // ObsWsPrivate *priv = obs_ws_get_instance_private(self);
     ObsWsClass *klass = OBS_WS_GET_CLASS(self);
 
-    if (klass->inst != NULL) {
-        GHashTable *map = g_hash_table_new(g_str_hash, g_str_equal);
-        g_hash_table_insert(map, "request-type", g_strdup("SetCurrentScene"));
-        g_hash_table_insert(map, "scene-name", g_strdup(scene));
+    GHashTable *map = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
+    g_hash_table_insert(map, g_strdup("request-type"), g_strdup("SetCurrentProgramScene"));
+    g_hash_table_insert(map, g_strdup("sceneName"), g_strdup(scene));
 
-        int message_id = uwsc_message_id();
-        ws_send(klass->inst, message_id, map, on_scene_set, self);
+    int message_id = uwsc_message_id();
+
+    // Get inst pointer with lock, then release before sending
+    LOCK_WS();
+    struct wic_inst *inst = klass->inst;
+    UNLOCK_WS();
+
+    if (inst != NULL) {
+        ws_send(inst, message_id, map, on_scene_set, self);
     }
+
+    g_hash_table_unref(map);
 }
 
 void obs_ws_get_current_scene(ObsWs *self, result_callback callback, gpointer user_data) {
     // ObsWsPrivate *priv = obs_ws_get_instance_private(self);
     ObsWsClass *klass = OBS_WS_GET_CLASS(self);
 
-    if (klass->inst != NULL) {
-        GHashTable *map = g_hash_table_new(g_str_hash, g_str_equal);
-        g_hash_table_insert(map, "request-type", g_strdup("GetCurrentScene"));
+    GHashTable *map = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
+    g_hash_table_insert(map, g_strdup("request-type"), g_strdup("GetCurrentProgramScene"));
 
-        int message_id = uwsc_message_id();
-        ws_send(klass->inst, message_id, map, callback, user_data);
+    int message_id = uwsc_message_id();
+
+    // Get inst pointer with lock, then release before sending
+    LOCK_WS();
+    struct wic_inst *inst = klass->inst;
+    UNLOCK_WS();
+
+    if (inst != NULL) {
+        ws_send(inst, message_id, map, callback, user_data);
     }
+
+    g_hash_table_unref(map);
 }
 
 // Private
@@ -251,20 +307,101 @@ static int uwsc_message_id() {
     return next_message_id++;
 }
 
+// Base64 encoding helper
+static gchar *base64_encode(const guchar *data, gsize len) {
+    BIO *bio, *b64;
+    BUF_MEM *buffer_ptr;
+
+    b64 = BIO_new(BIO_f_base64());
+    bio = BIO_new(BIO_s_mem());
+    bio = BIO_push(b64, bio);
+
+    BIO_set_flags(bio, BIO_FLAGS_BASE64_NO_NL);
+    BIO_write(bio, data, len);
+    BIO_flush(bio);
+    BIO_get_mem_ptr(bio, &buffer_ptr);
+
+    gchar *result = g_strndup(buffer_ptr->data, buffer_ptr->length);
+
+    BIO_free_all(bio);
+    return result;
+}
+
+// SHA256 helper
+static gchar *sha256_hash(const gchar *input) {
+    EVP_MD_CTX *mdctx = EVP_MD_CTX_new();
+    const EVP_MD *md = EVP_sha256();
+    unsigned char hash[SHA256_DIGEST_LENGTH];
+    unsigned int hash_len;
+
+    EVP_DigestInit_ex(mdctx, md, NULL);
+    EVP_DigestUpdate(mdctx, input, strlen(input));
+    EVP_DigestFinal_ex(mdctx, hash, &hash_len);
+    EVP_MD_CTX_free(mdctx);
+
+    return base64_encode(hash, hash_len);
+}
+
+// Generate authentication hash for OBS v5 protocol
+static gchar *generate_auth_hash(const gchar *password, const gchar *salt, const gchar *challenge) {
+    // Step 1: base64(sha256(password + salt))
+    gchar *password_salt = g_strconcat(password, salt, NULL);
+    gchar *step1 = sha256_hash(password_salt);
+    g_free(password_salt);
+
+    // Step 2: base64(sha256(base64(sha256(password + salt)) + challenge))
+    gchar *step1_challenge = g_strconcat(step1, challenge, NULL);
+    gchar *result = sha256_hash(step1_challenge);
+    g_free(step1);
+    g_free(step1_challenge);
+
+    return result;
+}
+
+typedef struct {
+    result_callback callback;
+    JsonObject *object;
+    gpointer user_data;
+} CallbackData;
+
+static gboolean invoke_callback_idle(gpointer user_data) {
+    CallbackData *data = (CallbackData *)user_data;
+    if (data->callback != NULL && data->object != NULL) {
+        data->callback(data->object, data->user_data);
+        json_object_unref(data->object);
+    }
+    g_free(data);
+    return G_SOURCE_REMOVE;
+}
+
 static void ws_emit(const char *event, JsonObject *object) {
+    if (klass == NULL) {
+        LOG("WARNING: Cannot emit event, klass not initialized");
+        return;
+    }
+
     GHashTableIter iter;
 
     gpointer key, value;
-    const char event_to_emit[50];
+    char event_to_emit[50];
 
-    const char *message_id = json_object_get_string_value(object, "message-id");
-    if (message_id == NULL) {
+    // OBS v5: Use requestId for responses, or eventType for events
+    const char *request_id = json_object_get_string_value(object, "requestId");
+    const char *event_type = json_object_get_string_value(object, "eventType");
+
+    if (request_id != NULL) {
+        g_snprintf(event_to_emit, sizeof(event_to_emit), "emit:response:%s", request_id);
+    } else if (event_type != NULL) {
+        g_snprintf(event_to_emit, sizeof(event_to_emit), "%s", event_type);
+    } else if (event != NULL) {
         g_snprintf(event_to_emit, sizeof(event_to_emit), "%s", event);
     } else {
-        g_snprintf(event_to_emit, sizeof(event_to_emit), "emit:message:%s", message_id);
+        g_snprintf(event_to_emit, sizeof(event_to_emit), "unknown");
     }
 
     printf("Event: %s\n", event_to_emit);
+
+    LOCK_WS();
     g_hash_table_iter_init(&iter, klass->callbacks);
     printf("iter 1 .... \n");
     while (g_hash_table_iter_next(&iter, &key, &value)) {
@@ -280,7 +417,12 @@ static void ws_emit(const char *event, JsonObject *object) {
                     result_callback callback = (result_callback)callbacks->data;
                     gpointer user_data = user_datas->data;
 
-                    callback(object, user_data);
+                    // Schedule callback on main thread using g_idle_add
+                    CallbackData *cb_data = g_new0(CallbackData, 1);
+                    cb_data->callback = callback;
+                    cb_data->object = object ? json_object_ref(object) : NULL;
+                    cb_data->user_data = user_data;
+                    g_idle_add(invoke_callback_idle, cb_data);
 
                     callbacks = callbacks->next;
                     user_datas = user_datas->next;
@@ -288,10 +430,14 @@ static void ws_emit(const char *event, JsonObject *object) {
             }
         }
     }
+    UNLOCK_WS();
 }
 
-void obs_ws_register_callback(const char *callbackId, result_callback callback,
+void obs_ws_register_callback(ObsWs *self, const char *callbackId, result_callback callback,
                               gpointer user_data) {
+    ObsWsClass *klass = OBS_WS_GET_CLASS(self);
+
+    LOCK_WS();
     GList *callback_list = NULL;
     GList *callback_data_list = NULL;
     g_hash_table_lookup_extended(klass->callbacks, callbackId, NULL, (gpointer *)&callback_list);
@@ -303,66 +449,94 @@ void obs_ws_register_callback(const char *callbackId, result_callback callback,
 
     g_hash_table_insert(klass->callbacks, g_strdup(callbackId), callback_list);
     g_hash_table_insert(klass->callbacks_data, g_strdup(callbackId), callback_data_list);
+    UNLOCK_WS();
 }
 
 static void ws_send(struct wic_inst *inst, int message_id, GHashTable *map,
                     result_callback callback, gpointer user_data) {
-    char message[10];
-    g_snprintf(message, sizeof(message), "%d", message_id);
-    g_hash_table_insert(map, "message-id", g_strdup(message));
+    // OBS v5: Use requestId instead of message-id
+    char request_id[20];
+    g_snprintf(request_id, sizeof(request_id), "%d", message_id);
 
+    // Register callback FIRST (before sending, while we know we have a valid connection)
+    if (callback != NULL && global_ws != NULL) {
+        char callback_id[50];
+        g_snprintf(callback_id, sizeof(callback_id), "emit:response:%s", request_id);
+        obs_ws_register_callback(global_ws, callback_id, callback, user_data);
+    }
+
+    // Build request data
+    JsonObject *request_data = json_object_new();
+    json_object_set_string_member(request_data, "requestId", request_id);
+
+    // Get request type from map
+    gpointer request_type = g_hash_table_lookup(map, "request-type");
+    if (request_type) {
+        json_object_set_string_member(request_data, "requestType", request_type);
+    }
+
+    // Add request data fields (excluding internal keys)
     GHashTableIter iter;
-
     gpointer key, value;
-    JsonGenerator *json = json_generator_new();
-    JsonObject *obj = json_object_new();
-    JsonNode *node = json_node_new(JSON_NODE_OBJECT);
-
     g_hash_table_iter_init(&iter, map);
-    printf("iter 2 ...\n");
     while (g_hash_table_iter_next(&iter, &key, &value)) {
+        if (g_strcmp0(key, "request-type") == 0) {
+            continue;
+        }
         if (g_strcmp0("true", value) == 0) {
-            json_object_set_boolean_member(obj, key, TRUE);
+            json_object_set_boolean_member(request_data, key, TRUE);
+        } else if (g_strcmp0("false", value) == 0) {
+            json_object_set_boolean_member(request_data, key, FALSE);
         } else {
-            json_object_set_string_member(obj, key, value);
+            json_object_set_string_member(request_data, key, value);
         }
     }
 
-    json_node_set_object(node, obj);
-    json_generator_set_root(json, node);
+    // Build full message with op code
+    JsonObject *root = json_object_new();
+    json_object_set_int_member(root, "op", OPCODE_REQUEST);
+
+    JsonNode *data_node = json_node_new(JSON_NODE_OBJECT);
+    json_node_set_object(data_node, request_data);
+    json_object_set_member(root, "d", data_node);
+
+    JsonGenerator *json = json_generator_new();
+    JsonNode *root_node = json_node_new(JSON_NODE_OBJECT);
+    json_node_set_object(root_node, root);
+    json_generator_set_root(json, root_node);
 
     gsize len;
     gchar *data = json_generator_to_data(json, &len);
     printf(">> %s\n", data);
 
-    char callback_id[50];
-    g_snprintf(callback_id, sizeof(callback_id), "emit:message:%d", message_id);
-
-    if (callback != NULL) {
-        obs_ws_register_callback(callback_id, callback, user_data);
-    }
+    // Send without holding any locks - wic_send_text is thread-safe
     printf(">> Send Status: %d\n", wic_send_text(inst, true, data, len));
 
     g_free(data);
+    json_object_unref(request_data);
+    json_object_unref(root);
+    json_node_unref(root_node);
     g_object_unref(json);
 }
 
 static void ws_send_command(struct wic_inst *inst, const gchar *command, result_callback callback,
                             gpointer user_data) {
-    GHashTable *map = g_hash_table_new(g_str_hash, g_str_equal);
-    g_hash_table_insert(map, "request-type", g_strdup(command));
+    GHashTable *map = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
+    g_hash_table_insert(map, g_strdup("request-type"), g_strdup(command));
 
     int message_id = uwsc_message_id();
     ws_send(inst, message_id, map, callback, user_data);
+
+    g_hash_table_unref(map);
 }
 
 static gpointer obs_ws_main(gpointer user_data) {
     // Save Global Thread Klass to use in the Protocol
     klass = (ObsWsClass *)user_data;
 
-    int s, redirects = 3;
-    static uint8_t rx[1000];
-    static char url[1000] = "ws://127.0.0.1:4444/";
+    int s;
+    static uint8_t rx[16384];
+    static char url[256] = "ws://127.0.0.1:4455/";
     struct wic_inst inst;
     struct wic_init_arg arg = {0};
 
@@ -392,7 +566,9 @@ static gpointer obs_ws_main(gpointer user_data) {
                                   wic_get_url_port(&inst), &s)) {
 
             if (wic_start(&inst) == WIC_STATUS_SUCCESS) {
+                LOCK_WS();
                 klass->inst = &inst;
+                UNLOCK_WS();
                 while (transport_recv(s, &inst))
                     ;
             } else {
@@ -407,7 +583,12 @@ static gpointer obs_ws_main(gpointer user_data) {
     return NULL;
 }
 
-GString *message_buffer = NULL;
+static GString *message_buffer = NULL;
+
+// Forward declarations for v5 message handlers
+static void on_hello_handler(struct wic_inst *inst, JsonObject *data);
+static void on_identified_handler(struct wic_inst *inst, JsonObject *data);
+
 static bool on_message_handler(struct wic_inst *inst, enum wic_encoding encoding, bool fin,
                                const char *data, uint16_t size) {
 
@@ -419,7 +600,6 @@ static bool on_message_handler(struct wic_inst *inst, enum wic_encoding encoding
     }
 
     if (fin) {
-        // printf("RTA: %s\n", message_buffer->str);
         GError *error = NULL;
         JsonParser *parser = json_parser_new();
         if (json_parser_load_from_data(parser, (const gchar *)message_buffer->str,
@@ -428,13 +608,46 @@ static bool on_message_handler(struct wic_inst *inst, enum wic_encoding encoding
             printf("Got json...");
             if (JSON_NODE_HOLDS_OBJECT(root)) {
                 JsonObject *message = json_node_get_object(root);
-                g_autofree gchar *event = json_object_get_string_value(message, "update-type");
-                ws_emit(event, message);
+
+                // OBS v5: Parse op code
+                if (json_object_has_member(message, "op")) {
+                    JsonNode *op_node = json_object_get_member(message, "op");
+                    int op_code = json_node_get_int(op_node);
+
+                    JsonObject *data_obj = NULL;
+                    if (json_object_has_member(message, "d")) {
+                        JsonNode *data_node = json_object_get_member(message, "d");
+                        if (JSON_NODE_HOLDS_OBJECT(data_node)) {
+                            data_obj = json_node_get_object(data_node);
+                        }
+                    }
+
+                    printf("Received OpCode: %d\n", op_code);
+
+                    switch (op_code) {
+                    case OPCODE_HELLO:
+                        on_hello_handler(inst, data_obj);
+                        break;
+                    case OPCODE_IDENTIFIED:
+                        on_identified_handler(inst, data_obj);
+                        break;
+                    case OPCODE_EVENT:
+                        ws_emit(NULL, data_obj);
+                        break;
+                    case OPCODE_REQUEST_RESPONSE:
+                        ws_emit(NULL, data_obj);
+                        break;
+                    default:
+                        printf("Unhandled OpCode: %d\n", op_code);
+                        break;
+                    }
+                }
             }
         } else {
-            printf("nananan %s\n", error->message);
+            printf("Failed to parse JSON: %s\n", error->message);
         }
 
+        g_object_unref(parser);
         g_string_free(message_buffer, TRUE);
         message_buffer = NULL;
     }
@@ -446,10 +659,76 @@ static void on_handshake_failure_handler(struct wic_inst *inst, enum wic_handsha
     LOG("websocket handshake failed for reason %d", reason);
 }
 
-void on_get_auth_result(JsonObject *object, gpointer user_data) {
-    JsonObject *value = json_object_from_boolean_value(TRUE);
-    ws_emit("Connected", value);
-    json_object_unref(value);
+// OBS v5: Handle Hello message (OpCode 0)
+static void on_hello_handler(struct wic_inst *inst, JsonObject *data) {
+    LOG("Received Hello message from OBS");
+
+    // Extract authentication info if present
+    const gchar *challenge = NULL;
+    const gchar *salt = NULL;
+    gboolean auth_required = FALSE;
+
+    if (json_object_has_member(data, "authentication")) {
+        JsonNode *auth_node = json_object_get_member(data, "authentication");
+        if (JSON_NODE_HOLDS_OBJECT(auth_node)) {
+            JsonObject *auth_obj = json_node_get_object(auth_node);
+            challenge = json_object_get_string_value(auth_obj, "challenge");
+            salt = json_object_get_string_value(auth_obj, "salt");
+            auth_required = TRUE;
+        }
+    }
+
+    // Build Identify message (OpCode 1)
+    JsonObject *identify_data = json_object_new();
+    json_object_set_int_member(identify_data, "rpcVersion", RPC_VERSION);
+    json_object_set_int_member(identify_data, "eventSubscriptions", 33);
+
+    // Add authentication if required
+    if (auth_required && auth_password != NULL && challenge != NULL && salt != NULL) {
+        gchar *auth_hash = generate_auth_hash(auth_password, salt, challenge);
+        json_object_set_string_member(identify_data, "authentication", auth_hash);
+        g_free(auth_hash);
+        LOG("Sending authentication with password");
+    } else if (auth_required && auth_password == NULL) {
+        LOG("WARNING: Authentication required but no password set!");
+    }
+
+    // Build full message
+    JsonObject *root = json_object_new();
+    json_object_set_int_member(root, "op", OPCODE_IDENTIFY);
+
+    JsonNode *data_node = json_node_new(JSON_NODE_OBJECT);
+    json_node_set_object(data_node, identify_data);
+    json_object_set_member(root, "d", data_node);
+
+    // Send Identify
+    JsonGenerator *json = json_generator_new();
+    JsonNode *root_node = json_node_new(JSON_NODE_OBJECT);
+    json_node_set_object(root_node, root);
+    json_generator_set_root(json, root_node);
+
+    gsize len;
+    gchar *json_data = json_generator_to_data(json, &len);
+    printf(">> Identify: %s\n", json_data);
+
+    wic_send_text(inst, true, json_data, len);
+
+    g_free(json_data);
+    json_object_unref(identify_data);
+    json_object_unref(root);
+    json_node_unref(root_node);
+    g_object_unref(json);
+}
+
+// OBS v5: Handle Identified message (OpCode 2)
+static void on_identified_handler(struct wic_inst *inst, JsonObject *data) {
+    LOG("Successfully identified with OBS");
+
+    // Emit identified event (OBS v5 compatible)
+    JsonObject *connected_obj = json_object_new();
+    json_object_set_boolean_member(connected_obj, "connected", TRUE);
+    ws_emit("Identified", connected_obj);
+    json_object_unref(connected_obj);
 }
 
 static void on_open_handler(struct wic_inst *inst) {
@@ -465,7 +744,8 @@ static void on_open_handler(struct wic_inst *inst) {
         LOG("%s: %s", name, value);
     }
 
-    ws_send_command(inst, "GetAuthRequired", on_get_auth_result, NULL);
+    // OBS v5: Wait for Hello message from server
+    // Authentication is handled in on_hello_handler when Hello is received
 }
 
 static void on_close_handler(struct wic_inst *inst, uint16_t code, const char *reason,
@@ -474,7 +754,9 @@ static void on_close_handler(struct wic_inst *inst, uint16_t code, const char *r
     ws_emit("Connected", object);
     json_object_unref(object);
 
+    LOCK_WS();
     klass->inst = NULL;
+    UNLOCK_WS();
 
     LOG("websocket closed for reason %u", code);
 }
@@ -492,7 +774,7 @@ static void on_send_handler(struct wic_inst *inst, const void *data, size_t size
 
 static void *on_buffer_handler(struct wic_inst *inst, size_t min_size, enum wic_buffer type,
                                size_t *max_size) {
-    static uint8_t tx[1000U];
+    static uint8_t tx[16384U];
 
     *max_size = sizeof(tx);
 

@@ -1,7 +1,7 @@
 #include "obs_plugin.h"
 
-#include "change_scene.h"
 #include "../libobsws/libobsws.h"
+#include "change_scene.h"
 
 static DeckPlugin *obs_plugin_clone(DeckPlugin *self, int action);
 static DeckPlugin *obs_plugin_clone_with_code(DeckPlugin *self, int code);
@@ -161,12 +161,43 @@ static void obs_plugin_render(DeckPlugin *self, cairo_t *cr, int width, int heig
     }
 }
 
-DeckPlugin *obs_plugin_new() { return g_object_new(OBS_TYPE_PLUGIN, "name", "OBSPlugin", NULL); }
+DeckPlugin *obs_plugin_new() {
+    obs_ws_new();
+    return g_object_new(OBS_TYPE_PLUGIN, "name", "OBSPlugin", NULL);
+}
 
 static void on_scene_changed(JsonObject *json, gpointer user_data) {
+    if (user_data == NULL || !G_IS_OBJECT(user_data)) {
+        return;
+    }
+
     OBSPlugin *self = OBS_PLUGIN(user_data);
+    if (self == NULL) {
+        return;
+    }
+
     OBSPluginPrivate *priv = obs_plugin_get_instance_private(self);
-    gchar *text = json_object_get_string_value(json, "scene-name");
+    if (priv == NULL) {
+        return;
+    }
+
+    // OBS v5: scene-name -> sceneName (en eventData)
+    gchar *text = NULL;
+    if (json_object_has_member(json, "eventData")) {
+        JsonNode *event_node = json_object_get_member(json, "eventData");
+        if (JSON_NODE_HOLDS_OBJECT(event_node)) {
+            JsonObject *event_data = json_node_get_object(event_node);
+            text = (gchar *)json_object_get_string_value(event_data, "sceneName");
+        }
+    }
+
+    // Fallback al formato anterior por compatibilidad
+    if (text == NULL) {
+        text = (gchar *)json_object_get_string_value(json, "sceneName");
+    }
+
+    printf("Scene changed to: %s (our scene: %s)\n", text ? text : "(null)",
+           priv->scene ? priv->scene : "(null)");
 
     if (g_strcmp0(text, priv->scene) == 0) {
         deck_plugin_set_state(DECK_PLUGIN(self), BUTTON_STATE_SELECTED);
@@ -176,11 +207,29 @@ static void on_scene_changed(JsonObject *json, gpointer user_data) {
 }
 
 static void on_ws_connected(JsonObject *json, gpointer user_data) {
+    if (user_data == NULL || !G_IS_OBJECT(user_data)) {
+        return;
+    }
+
     DeckPlugin *plugin = DECK_PLUGIN(user_data);
+    if (plugin == NULL) {
+        return;
+    }
 
-    gboolean connected = json_object_get_boolean_value(json, "value");
+    // OBS v5: revisar si hay eventData o usar formato directo
+    gboolean connected = TRUE; // Por defecto asumimos conectado
 
-    printf("Connected %d\n", connected);
+    if (json_object_has_member(json, "eventData")) {
+        JsonNode *event_node = json_object_get_member(json, "eventData");
+        if (JSON_NODE_HOLDS_OBJECT(event_node)) {
+            JsonObject *event_data = json_node_get_object(event_node);
+            connected = json_object_get_boolean_value(event_data, "connected");
+        }
+    } else {
+        connected = json_object_get_boolean_value(json, "connected");
+    }
+
+    printf("Connected callback: %d\n", connected);
     g_object_set(plugin, "obs_connected", connected, NULL);
     deck_plugin_reset(plugin);
 
@@ -194,8 +243,11 @@ DeckPlugin *obs_plugin_clone(DeckPlugin *self, int action) {
     DeckPlugin *clone = g_object_new(OBS_TYPE_PLUGIN, "name", "OBSPlugin", "action",
                                      &OBS_PLUGIN_INFO.actions[action], NULL);
 
-    obs_ws_register_callback("SwitchScenes", on_scene_changed, clone);
-    obs_ws_register_callback("Connected", on_ws_connected, clone);
+    ObsWs *ws = obs_ws_new();
+    // OBS v5: SwitchScenes -> CurrentProgramSceneChanged
+    obs_ws_register_callback(ws, "CurrentProgramSceneChanged", on_scene_changed, clone);
+    // OBS v5: Usar evento de identificación
+    obs_ws_register_callback(ws, "Identified", on_ws_connected, clone);
 
     return clone;
 }
