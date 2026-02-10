@@ -3,6 +3,7 @@
 #include "../libobsws/libobsws.h"
 #include "change_scene.h"
 #include "mute_source.h"
+#include "toggle_recording.h"
 
 static DeckPlugin *obs_plugin_clone(DeckPlugin *self, int action);
 static DeckPlugin *obs_plugin_clone_with_code(DeckPlugin *self, int code);
@@ -23,7 +24,7 @@ static GParamSpec *obj_properties[N_PROPERTIES] = {
     NULL,
 };
 
-typedef enum { CHANGE_SCENE = 0, MUTE_SOURCE = 1, N_ACTIONS } OBSActionCodes;
+typedef enum { CHANGE_SCENE = 0, MUTE_SOURCE = 1, TOGGLE_RECORDING = 2, N_ACTIONS } OBSActionCodes;
 
 DeckPluginInfo OBS_PLUGIN_INFO = {
     "OBS",
@@ -35,6 +36,10 @@ DeckPluginInfo OBS_PLUGIN_INFO = {
         {BUTTON_MODE_TOGGLE, "Mute Source", "/ar/com/p39/gtkdeck/plugins/obs-mute.png",
          "/ar/com/p39/gtkdeck/plugins/obs-mute-selected.png", MUTE_SOURCE, mute_source_config,
          mute_source_exec, mute_source_save, mute_source_load},
+        {BUTTON_MODE_TOGGLE, "Toggle Recording", "/ar/com/p39/gtkdeck/plugins/obs-recording.png",
+         "/ar/com/p39/gtkdeck/plugins/obs-recording-selected.png", TOGGLE_RECORDING,
+         toggle_recording_config, toggle_recording_exec, toggle_recording_save,
+         toggle_recording_load},
     },
 };
 
@@ -293,6 +298,37 @@ static void on_input_mute_changed(JsonObject *json, gpointer user_data) {
     }
 }
 
+static void on_record_state_changed(JsonObject *json, gpointer user_data) {
+    if (user_data == NULL || !G_IS_OBJECT(user_data)) {
+        return;
+    }
+
+    DeckPlugin *self = DECK_PLUGIN(user_data);
+    if (self == NULL) {
+        return;
+    }
+
+    const gchar *state = NULL;
+
+    if (json_object_has_member(json, "eventData")) {
+        JsonNode *event_node = json_object_get_member(json, "eventData");
+        if (JSON_NODE_HOLDS_OBJECT(event_node)) {
+            JsonObject *event_data = json_node_get_object(event_node);
+            state = json_object_get_string_value(event_data, "outputState");
+        }
+    }
+
+    if (state == NULL) {
+        return;
+    }
+
+    if (g_strcmp0(state, "OBS_WEBSOCKET_OUTPUT_STARTED") == 0) {
+        deck_plugin_set_state(self, BUTTON_STATE_SELECTED);
+    } else if (g_strcmp0(state, "OBS_WEBSOCKET_OUTPUT_STOPPED") == 0) {
+        deck_plugin_set_state(self, BUTTON_STATE_NORMAL);
+    }
+}
+
 DeckPlugin *obs_plugin_clone(DeckPlugin *self, int action) {
     DeckPlugin *clone = g_object_new(OBS_TYPE_PLUGIN, "name", "OBSPlugin", "action",
                                      &OBS_PLUGIN_INFO.actions[action], NULL);
@@ -303,6 +339,8 @@ DeckPlugin *obs_plugin_clone(DeckPlugin *self, int action) {
         obs_ws_register_callback(ws, "CurrentProgramSceneChanged", on_scene_changed, clone);
     } else if (action == MUTE_SOURCE) {
         obs_ws_register_callback(ws, "InputMuteStateChanged", on_input_mute_changed, clone);
+    } else if (action == TOGGLE_RECORDING) {
+        obs_ws_register_callback(ws, "RecordStateChanged", on_record_state_changed, clone);
     }
 
     obs_ws_register_callback(ws, "Identified", on_ws_connected, clone);

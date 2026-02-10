@@ -42,6 +42,8 @@ GList *obs_ws_get_input_list(ObsWs *self, result_callback callback, gpointer use
 void obs_ws_toggle_input_mute(ObsWs *self, const char *input_name);
 void obs_ws_get_input_mute(ObsWs *self, const char *input_name, result_callback callback,
                            gpointer user_data);
+void obs_ws_toggle_record(ObsWs *self);
+void obs_ws_get_record_status(ObsWs *self, result_callback callback, gpointer user_data);
 
 const gchar *json_object_get_string_value(JsonObject *json, const gchar *key);
 const gboolean json_object_get_boolean_value(JsonObject *json, const gchar *key);

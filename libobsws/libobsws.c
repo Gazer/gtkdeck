@@ -326,6 +326,30 @@ void obs_ws_get_input_mute(ObsWs *self, const char *input_name, result_callback 
     g_hash_table_unref(map);
 }
 
+void obs_ws_toggle_record(ObsWs *self) {
+    ObsWsClass *klass = OBS_WS_GET_CLASS(self);
+
+    LOCK_WS();
+    struct wic_inst *inst = klass->inst;
+    UNLOCK_WS();
+
+    if (inst != NULL) {
+        ws_send_command(inst, "ToggleRecord", NULL, NULL);
+    }
+}
+
+void obs_ws_get_record_status(ObsWs *self, result_callback callback, gpointer user_data) {
+    ObsWsClass *klass = OBS_WS_GET_CLASS(self);
+
+    LOCK_WS();
+    struct wic_inst *inst = klass->inst;
+    UNLOCK_WS();
+
+    if (inst != NULL) {
+        ws_send_command(inst, "GetRecordStatus", callback, user_data);
+    }
+}
+
 // Private
 
 const gchar *json_object_get_string_value(JsonObject *json, const gchar *key) {
