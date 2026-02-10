@@ -449,6 +449,17 @@ void obs_ws_register_callback(ObsWs *self, const char *callbackId, result_callba
 
     g_hash_table_insert(klass->callbacks, g_strdup(callbackId), callback_list);
     g_hash_table_insert(klass->callbacks_data, g_strdup(callbackId), callback_data_list);
+
+    // Si el evento es "Identified" y ya estamos conectados, llamar el callback inmediatamente
+    if (g_strcmp0(callbackId, "Identified") == 0 && klass->inst != NULL) {
+        printf("Already connected, invoking Identified callback immediately\n");
+        CallbackData *cb_data = g_new0(CallbackData, 1);
+        cb_data->callback = callback;
+        cb_data->object = json_object_new();
+        json_object_set_boolean_member(cb_data->object, "connected", TRUE);
+        cb_data->user_data = user_data;
+        g_idle_add(invoke_callback_idle, cb_data);
+    }
     UNLOCK_WS();
 }
 
@@ -465,17 +476,20 @@ static void ws_send(struct wic_inst *inst, int message_id, GHashTable *map,
         obs_ws_register_callback(global_ws, callback_id, callback, user_data);
     }
 
-    // Build request data
-    JsonObject *request_data = json_object_new();
-    json_object_set_string_member(request_data, "requestId", request_id);
+    // Build the "d" envelope with requestId and requestType
+    JsonObject *d_object = json_object_new();
+    json_object_set_string_member(d_object, "requestId", request_id);
 
     // Get request type from map
     gpointer request_type = g_hash_table_lookup(map, "request-type");
     if (request_type) {
-        json_object_set_string_member(request_data, "requestType", request_type);
+        json_object_set_string_member(d_object, "requestType", request_type);
     }
 
-    // Add request data fields (excluding internal keys)
+    // OBS v5: Additional fields go inside "requestData"
+    JsonObject *request_data = json_object_new();
+    gboolean has_request_data = FALSE;
+
     GHashTableIter iter;
     gpointer key, value;
     g_hash_table_iter_init(&iter, map);
@@ -483,6 +497,7 @@ static void ws_send(struct wic_inst *inst, int message_id, GHashTable *map,
         if (g_strcmp0(key, "request-type") == 0) {
             continue;
         }
+        has_request_data = TRUE;
         if (g_strcmp0("true", value) == 0) {
             json_object_set_boolean_member(request_data, key, TRUE);
         } else if (g_strcmp0("false", value) == 0) {
@@ -492,12 +507,19 @@ static void ws_send(struct wic_inst *inst, int message_id, GHashTable *map,
         }
     }
 
+    if (has_request_data) {
+        JsonNode *rd_node = json_node_new(JSON_NODE_OBJECT);
+        json_node_set_object(rd_node, request_data);
+        json_object_set_member(d_object, "requestData", rd_node);
+    }
+    json_object_unref(request_data);
+
     // Build full message with op code
     JsonObject *root = json_object_new();
     json_object_set_int_member(root, "op", OPCODE_REQUEST);
 
     JsonNode *data_node = json_node_new(JSON_NODE_OBJECT);
-    json_node_set_object(data_node, request_data);
+    json_node_set_object(data_node, d_object);
     json_object_set_member(root, "d", data_node);
 
     JsonGenerator *json = json_generator_new();
@@ -513,7 +535,7 @@ static void ws_send(struct wic_inst *inst, int message_id, GHashTable *map,
     printf(">> Send Status: %d\n", wic_send_text(inst, true, data, len));
 
     g_free(data);
-    json_object_unref(request_data);
+    json_object_unref(d_object);
     json_object_unref(root);
     json_node_unref(root_node);
     g_object_unref(json);
@@ -720,7 +742,6 @@ static void on_hello_handler(struct wic_inst *inst, JsonObject *data) {
     g_object_unref(json);
 }
 
-// OBS v5: Handle Identified message (OpCode 2)
 static void on_identified_handler(struct wic_inst *inst, JsonObject *data) {
     LOG("Successfully identified with OBS");
 

@@ -1,35 +1,26 @@
 #include "../../libobsws/libobsws.h"
 #include "../deck_plugin.h"
 
-void read_scene_name(JsonArray *array, guint index_, JsonNode *json, gpointer user_data) {
-    GList **list = (GList **)user_data;
-
-    JsonObject *object = json_node_get_object(json);
-
-    if (json_object_has_member(object, "name")) {
-        JsonNode *node = json_object_get_member(object, "name");
-        if (JSON_NODE_HOLDS_VALUE(node)) {
-            char *name = json_node_get_string(node);
-            printf("> %s\n", name);
-            (*list) = g_list_append(*list, g_strdup(name));
-        }
-    }
-}
+typedef struct {
+    GtkComboBox *combo;
+    gchar *selected_scene;
+} SceneListData;
 
 void on_scene_list(JsonObject *json, gpointer user_data) {
-    char *current_scene = NULL;
-    GList *scenes = NULL;
+    SceneListData *data = (SceneListData *)user_data;
 
-    // Verificar que user_data sea válido
-    if (user_data == NULL || !GTK_IS_LIST_STORE(user_data)) {
-        printf("ERROR: Invalid store in on_scene_list\n");
+    if (data == NULL || data->combo == NULL || !GTK_IS_COMBO_BOX(data->combo)) {
+        printf("ERROR: Invalid data in on_scene_list\n");
+        if (data != NULL) {
+            g_free(data->selected_scene);
+            g_free(data);
+        }
         return;
     }
 
-    printf("Store %p\n", user_data);
-    GtkListStore *store = GTK_LIST_STORE(user_data);
+    GtkTreeModel *model = gtk_combo_box_get_model(data->combo);
+    GtkListStore *store = GTK_LIST_STORE(model);
 
-    // OBS v5: los datos están en responseData
     JsonObject *response_data = json;
     if (json_object_has_member(json, "responseData")) {
         JsonNode *response_node = json_object_get_member(json, "responseData");
@@ -38,16 +29,6 @@ void on_scene_list(JsonObject *json, gpointer user_data) {
         }
     }
 
-    // OBS v5: current-scene -> currentProgramSceneName
-    if (json_object_has_member(response_data, "currentProgramSceneName")) {
-        JsonNode *node = json_object_get_member(response_data, "currentProgramSceneName");
-        if (JSON_NODE_HOLDS_VALUE(node)) {
-            current_scene = (char *)json_node_get_string(node);
-            printf("Current scene: %s\n", current_scene ? current_scene : "(null)");
-        }
-    }
-
-    // OBS v5: Las escenas tienen sceneName en lugar de name
     if (json_object_has_member(response_data, "scenes")) {
         JsonNode *node = json_object_get_member(response_data, "scenes");
         if (JSON_NODE_HOLDS_ARRAY(node)) {
@@ -56,6 +37,8 @@ void on_scene_list(JsonObject *json, gpointer user_data) {
             printf("Got %u scenes\n", len);
 
             GtkTreeIter iter;
+            gint active_index = -1;
+            gint index = 0;
             for (guint i = 0; i < len; i++) {
                 JsonNode *scene_node = json_array_get_element(array, i);
                 if (JSON_NODE_HOLDS_OBJECT(scene_node)) {
@@ -67,12 +50,25 @@ void on_scene_list(JsonObject *json, gpointer user_data) {
                             printf("Scene: %s\n", name);
                             gtk_list_store_append(store, &iter);
                             gtk_list_store_set(store, &iter, 0, name, -1);
+
+                            if (data->selected_scene != NULL &&
+                                g_strcmp0(name, data->selected_scene) == 0) {
+                                active_index = index;
+                            }
+                            index++;
                         }
                     }
                 }
             }
+
+            if (active_index >= 0) {
+                gtk_combo_box_set_active(data->combo, active_index);
+            }
         }
     }
+
+    g_free(data->selected_scene);
+    g_free(data);
 }
 
 static void scene_changed(GtkComboBox *widget, gpointer user_data) {
@@ -93,19 +89,11 @@ static void scene_changed(GtkComboBox *widget, gpointer user_data) {
 
 void change_scene_config(DeckPlugin *self, GtkBox *parent) {
     GtkWidget *label = gtk_label_new("Scene");
-    g_autofree gchar *current_scene;
+    g_autofree gchar *current_scene = NULL;
 
     g_object_get(G_OBJECT(self), "scene", &current_scene, NULL);
 
-    GtkTreeIter iter;
     GtkListStore *store = gtk_list_store_new(1, G_TYPE_STRING);
-
-    printf(".. %p\n", store);
-    ObsWs *ws = obs_ws_new();
-    obs_ws_get_scenes(ws, on_scene_list, store);
-
-    // gtk_list_store_append(store, &iter);
-    // gtk_list_store_set(store, &iter, 0, "Previous Track", -1);
 
     GtkCellRenderer *renderer = gtk_cell_renderer_text_new();
     g_object_set(renderer, "height", 30, "width", 200, NULL);
@@ -113,11 +101,16 @@ void change_scene_config(DeckPlugin *self, GtkBox *parent) {
     GtkWidget *combo = gtk_combo_box_new_with_model(GTK_TREE_MODEL(store));
     g_signal_connect(G_OBJECT(combo), "changed", G_CALLBACK(scene_changed), self);
 
-    // gtk_combo_box_set_active(GTK_COMBO_BOX(combo), current_key);
-
     gtk_cell_layout_pack_start(GTK_CELL_LAYOUT(combo), renderer, TRUE);
     gtk_cell_layout_set_attributes(GTK_CELL_LAYOUT(combo), GTK_CELL_RENDERER(renderer), "text", 0,
                                    NULL);
+
+    SceneListData *data = g_new0(SceneListData, 1);
+    data->combo = GTK_COMBO_BOX(combo);
+    data->selected_scene = g_strdup(current_scene);
+
+    ObsWs *ws = obs_ws_new();
+    obs_ws_get_scenes(ws, on_scene_list, data);
 
     gtk_box_pack_start(parent, label, TRUE, FALSE, 5);
     gtk_box_pack_start(parent, combo, TRUE, FALSE, 5);
