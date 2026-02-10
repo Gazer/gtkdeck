@@ -269,6 +269,63 @@ void obs_ws_get_current_scene(ObsWs *self, result_callback callback, gpointer us
     g_hash_table_unref(map);
 }
 
+GList *obs_ws_get_input_list(ObsWs *self, result_callback callback, gpointer user_data) {
+    ObsWsClass *klass = OBS_WS_GET_CLASS(self);
+
+    LOCK_WS();
+    struct wic_inst *inst = klass->inst;
+    UNLOCK_WS();
+
+    if (inst != NULL) {
+        ws_send_command(inst, "GetInputList", callback, user_data);
+    }
+
+    return NULL;
+}
+
+void on_input_mute_toggled(JsonObject *json, gpointer user_data) { printf("input mute toggled\n"); }
+
+void obs_ws_toggle_input_mute(ObsWs *self, const char *input_name) {
+    ObsWsClass *klass = OBS_WS_GET_CLASS(self);
+
+    GHashTable *map = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
+    g_hash_table_insert(map, g_strdup("request-type"), g_strdup("ToggleInputMute"));
+    g_hash_table_insert(map, g_strdup("inputName"), g_strdup(input_name));
+
+    int message_id = uwsc_message_id();
+
+    LOCK_WS();
+    struct wic_inst *inst = klass->inst;
+    UNLOCK_WS();
+
+    if (inst != NULL) {
+        ws_send(inst, message_id, map, on_input_mute_toggled, self);
+    }
+
+    g_hash_table_unref(map);
+}
+
+void obs_ws_get_input_mute(ObsWs *self, const char *input_name, result_callback callback,
+                           gpointer user_data) {
+    ObsWsClass *klass = OBS_WS_GET_CLASS(self);
+
+    GHashTable *map = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
+    g_hash_table_insert(map, g_strdup("request-type"), g_strdup("GetInputMute"));
+    g_hash_table_insert(map, g_strdup("inputName"), g_strdup(input_name));
+
+    int message_id = uwsc_message_id();
+
+    LOCK_WS();
+    struct wic_inst *inst = klass->inst;
+    UNLOCK_WS();
+
+    if (inst != NULL) {
+        ws_send(inst, message_id, map, callback, user_data);
+    }
+
+    g_hash_table_unref(map);
+}
+
 // Private
 
 const gchar *json_object_get_string_value(JsonObject *json, const gchar *key) {

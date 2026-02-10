@@ -2,6 +2,7 @@
 
 #include "../libobsws/libobsws.h"
 #include "change_scene.h"
+#include "mute_source.h"
 
 static DeckPlugin *obs_plugin_clone(DeckPlugin *self, int action);
 static DeckPlugin *obs_plugin_clone_with_code(DeckPlugin *self, int code);
@@ -10,18 +11,19 @@ static void obs_plugin_render(DeckPlugin *self, cairo_t *cr, int width, int heig
 
 typedef struct _OBSPluginPrivate {
     gchar *scene;
+    gchar *source;
     gboolean obs_connected;
 } OBSPluginPrivate;
 
 G_DEFINE_TYPE_WITH_PRIVATE(OBSPlugin, obs_plugin, DECK_TYPE_PLUGIN)
 
-typedef enum { SCENE = 1, OBS_CONNECTED, N_PROPERTIES } OBSPluginProperty;
+typedef enum { SCENE = 1, SOURCE, OBS_CONNECTED, N_PROPERTIES } OBSPluginProperty;
 
 static GParamSpec *obj_properties[N_PROPERTIES] = {
     NULL,
 };
 
-typedef enum { CHANGE_SCENE = 0, N_ACTIONS } OBSActionCodes;
+typedef enum { CHANGE_SCENE = 0, MUTE_SOURCE = 1, N_ACTIONS } OBSActionCodes;
 
 DeckPluginInfo OBS_PLUGIN_INFO = {
     "OBS",
@@ -30,19 +32,17 @@ DeckPluginInfo OBS_PLUGIN_INFO = {
         {BUTTON_MODE_TOGGLE, "Change Scene", "/ar/com/p39/gtkdeck/plugins/obs-scene.png",
          "/ar/com/p39/gtkdeck/plugins/obs-scene-selected.png", CHANGE_SCENE, change_scene_config,
          change_scene_exec, change_scene_save, change_scene_load},
-        // {BUTTON_MODE_NORMAL, "Text", "/ar/com/p39/gtkdeck/plugins/obs-text.png", TEXT,
-        // text_config,
-        //  text_exec, text_save, text_load},
-        // {BUTTON_MODE_NORMAL, "Multimedia", "/ar/com/p39/gtkdeck/plugins/obs-previous.png",
-        //  MULTIMEDIA, media_config, media_exec, media_save, media_load},
+        {BUTTON_MODE_TOGGLE, "Mute Source", "/ar/com/p39/gtkdeck/plugins/obs-mute.png",
+         "/ar/com/p39/gtkdeck/plugins/obs-mute-selected.png", MUTE_SOURCE, mute_source_config,
+         mute_source_exec, mute_source_save, mute_source_load},
     },
 };
 
 static void obs_plugin_init(OBSPlugin *self) {
     OBSPluginPrivate *priv = obs_plugin_get_instance_private(self);
 
-    // Set default values
     priv->scene = NULL;
+    priv->source = NULL;
     priv->obs_connected = FALSE;
 }
 
@@ -50,9 +50,12 @@ static void obs_plugin_finalize(GObject *object) {
     OBSPlugin *self = OBS_PLUGIN(object);
     OBSPluginPrivate *priv = obs_plugin_get_instance_private(self);
 
-    // Free memory if needed
     if (priv->scene != NULL) {
         g_free(priv->scene);
+    }
+
+    if (priv->source != NULL) {
+        g_free(priv->source);
     }
 
     G_OBJECT_CLASS(obs_plugin_parent_class)->finalize(object);
@@ -71,12 +74,18 @@ static void obs_plugin_set_property(GObject *object, guint property_id, const GV
         priv->scene = g_value_dup_string(value);
         break;
     }
+    case SOURCE: {
+        if (priv->source != NULL) {
+            g_free(priv->source);
+        }
+        priv->source = g_value_dup_string(value);
+        break;
+    }
     case OBS_CONNECTED: {
         priv->obs_connected = g_value_get_boolean(value);
         break;
     }
     default:
-        /* We don't have any other property... */
         G_OBJECT_WARN_INVALID_PROPERTY_ID(object, property_id, pspec);
         break;
     }
@@ -92,12 +101,15 @@ static void obs_plugin_get_property(GObject *object, guint property_id, GValue *
         g_value_set_string(value, priv->scene);
         break;
     }
+    case SOURCE: {
+        g_value_set_string(value, priv->source);
+        break;
+    }
     case OBS_CONNECTED: {
         g_value_set_boolean(value, priv->obs_connected);
         break;
     }
     default:
-        /* We don't have any other property... */
         G_OBJECT_WARN_INVALID_PROPERTY_ID(object, property_id, pspec);
         break;
     }
@@ -122,6 +134,9 @@ static void obs_plugin_class_init(OBSPluginClass *klass) {
 
     obj_properties[SCENE] =
         g_param_spec_string("scene", "scene", "scene.", NULL, G_PARAM_READWRITE);
+
+    obj_properties[SOURCE] =
+        g_param_spec_string("source", "source", "source.", NULL, G_PARAM_READWRITE);
 
     obj_properties[OBS_CONNECTED] = g_param_spec_boolean(
         "obs_connected", "obs_connected", "obs_connected.", FALSE, G_PARAM_READWRITE);
@@ -238,13 +253,58 @@ static void on_ws_connected(JsonObject *json, gpointer user_data) {
     }
 }
 
+static void on_input_mute_changed(JsonObject *json, gpointer user_data) {
+    if (user_data == NULL || !G_IS_OBJECT(user_data)) {
+        return;
+    }
+
+    OBSPlugin *self = OBS_PLUGIN(user_data);
+    if (self == NULL) {
+        return;
+    }
+
+    OBSPluginPrivate *priv = obs_plugin_get_instance_private(self);
+    if (priv == NULL) {
+        return;
+    }
+
+    gchar *input_name = NULL;
+    gboolean input_muted = FALSE;
+
+    if (json_object_has_member(json, "eventData")) {
+        JsonNode *event_node = json_object_get_member(json, "eventData");
+        if (JSON_NODE_HOLDS_OBJECT(event_node)) {
+            JsonObject *event_data = json_node_get_object(event_node);
+            input_name = (gchar *)json_object_get_string_value(event_data, "inputName");
+            input_muted = json_object_get_boolean_value(event_data, "inputMuted");
+        }
+    }
+
+    if (input_name == NULL) {
+        return;
+    }
+
+    if (g_strcmp0(input_name, priv->source) == 0) {
+        if (input_muted) {
+            deck_plugin_set_state(DECK_PLUGIN(self), BUTTON_STATE_SELECTED);
+        } else {
+            deck_plugin_set_state(DECK_PLUGIN(self), BUTTON_STATE_NORMAL);
+        }
+    }
+}
+
 DeckPlugin *obs_plugin_clone(DeckPlugin *self, int action) {
     DeckPlugin *clone = g_object_new(OBS_TYPE_PLUGIN, "name", "OBSPlugin", "action",
                                      &OBS_PLUGIN_INFO.actions[action], NULL);
 
     ObsWs *ws = obs_ws_new();
-    printf("registering callback for CurrentProgramSceneChanged %p\n", clone);
-    obs_ws_register_callback(ws, "CurrentProgramSceneChanged", on_scene_changed, clone);
+
+    if (action == CHANGE_SCENE) {
+        obs_ws_register_callback(ws, "CurrentProgramSceneChanged", on_scene_changed, clone);
+    } else if (action == MUTE_SOURCE) {
+        obs_ws_register_callback(ws, "InputMuteStateChanged", on_input_mute_changed, clone);
+    }
+
     obs_ws_register_callback(ws, "Identified", on_ws_connected, clone);
 
     return clone;

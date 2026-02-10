@@ -26,5 +26,7 @@
     <file alias="gtkdeck-countdown.png" compressed="true">assets/icons8-countdown-72.png</file>
     <file alias="obs-scene.png" compressed="true">assets/icons8-obs-scene.png</file>
     <file alias="obs-scene-selected.png" compressed="true">assets/icons8-obs-scene-selected.png</file>
+    <file alias="obs-mute.png" compressed="true">assets/icons8-speaker-72.png</file>
+    <file alias="obs-mute-selected.png" compressed="true">assets/icons8-mute-72.png</file>
   </gresource>
 </gresources>
