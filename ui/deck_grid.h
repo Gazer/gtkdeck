@@ -46,6 +46,8 @@ DeckPlugin *deck_grid_get_button(DeckGrid *self, int key);
 
 void deck_grid_remove_button(DeckGrid *self, int key);
 
+void deck_grid_save_config(DeckGrid *self);
+
 G_END_DECLS
 
 #endif /* __DECK_GRID_H__ */

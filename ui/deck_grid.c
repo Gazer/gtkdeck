@@ -356,3 +356,9 @@ void deck_grid_remove_button(DeckGrid *self, int key) {
     // Redraw the cell as empty
     add_plugin_button(self, key, self->priv->deck, NULL, left, top);
 }
+
+void deck_grid_save_config(DeckGrid *self) {
+    g_return_if_fail(DECK_IS_GRID(self));
+
+    save_config(self, self->priv->deck);
+}

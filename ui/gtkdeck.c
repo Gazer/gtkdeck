@@ -8,8 +8,6 @@
 #include <libayatana-appindicator/app-indicator.h>
 #include <unistd.h>
 
-void save_config(DeckGrid *grid, StreamDeck *deck);
-
 GList *plugin_list = NULL;
 GtkBox *config_row;
 GtkWidget *global_grid;
@@ -303,6 +301,10 @@ int main(int argc, char **argv) {
     g_signal_connect(app, "activate", G_CALLBACK(activate), &ctx);
 
     status = g_application_run(G_APPLICATION(app), argc, argv);
+
+    if (global_grid != NULL) {
+        deck_grid_save_config(DECK_GRID(global_grid));
+    }
 
     unlink("/tmp/gtkdeck-icon.png");
 
