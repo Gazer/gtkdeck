@@ -333,7 +333,9 @@ void process_plugin_exec(gpointer data, gpointer user_data) {
 
     priv->action->exec(data);
 
-    deck_plugin_reset(self);
+    if (priv->action->mode != BUTTON_MODE_TOGGLE) {
+        deck_plugin_reset(self);
+    }
 }
 
 void deck_plugin_exec(DeckPlugin *self) {

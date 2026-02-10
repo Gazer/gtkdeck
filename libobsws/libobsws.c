@@ -342,7 +342,6 @@ static gchar *sha256_hash(const gchar *input) {
     return base64_encode(hash, hash_len);
 }
 
-// Generate authentication hash for OBS v5 protocol
 static gchar *generate_auth_hash(const gchar *password, const gchar *salt, const gchar *challenge) {
     // Step 1: base64(sha256(password + salt))
     gchar *password_salt = g_strconcat(password, salt, NULL);
@@ -385,7 +384,6 @@ static void ws_emit(const char *event, JsonObject *object) {
     gpointer key, value;
     char event_to_emit[50];
 
-    // OBS v5: Use requestId for responses, or eventType for events
     const char *request_id = json_object_get_string_value(object, "requestId");
     const char *event_type = json_object_get_string_value(object, "eventType");
 
@@ -450,7 +448,6 @@ void obs_ws_register_callback(ObsWs *self, const char *callbackId, result_callba
     g_hash_table_insert(klass->callbacks, g_strdup(callbackId), callback_list);
     g_hash_table_insert(klass->callbacks_data, g_strdup(callbackId), callback_data_list);
 
-    // Si el evento es "Identified" y ya estamos conectados, llamar el callback inmediatamente
     if (g_strcmp0(callbackId, "Identified") == 0 && klass->inst != NULL) {
         printf("Already connected, invoking Identified callback immediately\n");
         CallbackData *cb_data = g_new0(CallbackData, 1);
@@ -465,7 +462,6 @@ void obs_ws_register_callback(ObsWs *self, const char *callbackId, result_callba
 
 static void ws_send(struct wic_inst *inst, int message_id, GHashTable *map,
                     result_callback callback, gpointer user_data) {
-    // OBS v5: Use requestId instead of message-id
     char request_id[20];
     g_snprintf(request_id, sizeof(request_id), "%d", message_id);
 
@@ -486,7 +482,6 @@ static void ws_send(struct wic_inst *inst, int message_id, GHashTable *map,
         json_object_set_string_member(d_object, "requestType", request_type);
     }
 
-    // OBS v5: Additional fields go inside "requestData"
     JsonObject *request_data = json_object_new();
     gboolean has_request_data = FALSE;
 
@@ -607,7 +602,6 @@ static gpointer obs_ws_main(gpointer user_data) {
 
 static GString *message_buffer = NULL;
 
-// Forward declarations for v5 message handlers
 static void on_hello_handler(struct wic_inst *inst, JsonObject *data);
 static void on_identified_handler(struct wic_inst *inst, JsonObject *data);
 
@@ -631,7 +625,6 @@ static bool on_message_handler(struct wic_inst *inst, enum wic_encoding encoding
             if (JSON_NODE_HOLDS_OBJECT(root)) {
                 JsonObject *message = json_node_get_object(root);
 
-                // OBS v5: Parse op code
                 if (json_object_has_member(message, "op")) {
                     JsonNode *op_node = json_object_get_member(message, "op");
                     int op_code = json_node_get_int(op_node);
@@ -681,7 +674,6 @@ static void on_handshake_failure_handler(struct wic_inst *inst, enum wic_handsha
     LOG("websocket handshake failed for reason %d", reason);
 }
 
-// OBS v5: Handle Hello message (OpCode 0)
 static void on_hello_handler(struct wic_inst *inst, JsonObject *data) {
     LOG("Received Hello message from OBS");
 
@@ -703,7 +695,7 @@ static void on_hello_handler(struct wic_inst *inst, JsonObject *data) {
     // Build Identify message (OpCode 1)
     JsonObject *identify_data = json_object_new();
     json_object_set_int_member(identify_data, "rpcVersion", RPC_VERSION);
-    json_object_set_int_member(identify_data, "eventSubscriptions", 33);
+    json_object_set_int_member(identify_data, "eventSubscriptions", 2047);
 
     // Add authentication if required
     if (auth_required && auth_password != NULL && challenge != NULL && salt != NULL) {
@@ -745,7 +737,6 @@ static void on_hello_handler(struct wic_inst *inst, JsonObject *data) {
 static void on_identified_handler(struct wic_inst *inst, JsonObject *data) {
     LOG("Successfully identified with OBS");
 
-    // Emit identified event (OBS v5 compatible)
     JsonObject *connected_obj = json_object_new();
     json_object_set_boolean_member(connected_obj, "connected", TRUE);
     ws_emit("Identified", connected_obj);
@@ -764,9 +755,6 @@ static void on_open_handler(struct wic_inst *inst) {
 
         LOG("%s: %s", name, value);
     }
-
-    // OBS v5: Wait for Hello message from server
-    // Authentication is handled in on_hello_handler when Hello is received
 }
 
 static void on_close_handler(struct wic_inst *inst, uint16_t code, const char *reason,
