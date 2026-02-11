@@ -1,12 +1,77 @@
 #include "../../libobsws/libobsws.h"
-#include "../deck_plugin.h"
+#include "../obs_action_types.h"
+#include "../obs_plugin.h"
 
+/* Private data for Mute Source action */
+typedef struct {
+    gchar *source;
+} MuteSourceData;
+
+/* Callback for input mute changed event */
+static void on_input_mute_changed(JsonObject *json, gpointer user_data) {
+    if (user_data == NULL || !G_IS_OBJECT(user_data)) {
+        return;
+    }
+
+    OBSPlugin *self = OBS_PLUGIN(user_data);
+    MuteSourceData *data = obs_plugin_get_action_data(self);
+    if (data == NULL) {
+        return;
+    }
+
+    gchar *input_name = NULL;
+    gboolean input_muted = FALSE;
+
+    if (json_object_has_member(json, "eventData")) {
+        JsonNode *event_node = json_object_get_member(json, "eventData");
+        if (JSON_NODE_HOLDS_OBJECT(event_node)) {
+            JsonObject *event_data = json_node_get_object(event_node);
+            input_name = (gchar *)json_object_get_string_value(event_data, "inputName");
+            input_muted = json_object_get_boolean_value(event_data, "inputMuted");
+        }
+    }
+
+    if (input_name == NULL) {
+        return;
+    }
+
+    if (g_strcmp0(input_name, data->source) == 0) {
+        if (input_muted) {
+            deck_plugin_set_state(DECK_PLUGIN(self), BUTTON_STATE_SELECTED);
+        } else {
+            deck_plugin_set_state(DECK_PLUGIN(self), BUTTON_STATE_NORMAL);
+        }
+    }
+}
+
+/* Lifecycle methods */
+static void mute_source_init(OBSPlugin *self) {
+    MuteSourceData *data = g_new0(MuteSourceData, 1);
+    data->source = NULL;
+    obs_plugin_set_action_data(self, data);
+
+    ObsWs *ws = obs_ws_new();
+    obs_ws_register_callback(ws, "InputMuteStateChanged", on_input_mute_changed, self);
+}
+
+static void mute_source_destroy(OBSPlugin *self) {
+    MuteSourceData *data = obs_plugin_get_action_data(self);
+    if (data != NULL) {
+        if (data->source != NULL) {
+            g_free(data->source);
+        }
+        g_free(data);
+        obs_plugin_set_action_data(self, NULL);
+    }
+}
+
+/* Config UI */
 typedef struct {
     GtkComboBox *combo;
     gchar *selected_input;
 } InputListData;
 
-void on_input_list(JsonObject *json, gpointer user_data) {
+static void on_input_list(JsonObject *json, gpointer user_data) {
     InputListData *data = (InputListData *)user_data;
 
     if (data == NULL || data->combo == NULL || !GTK_IS_COMBO_BOX(data->combo)) {
@@ -84,23 +149,28 @@ void on_input_list(JsonObject *json, gpointer user_data) {
 }
 
 static void input_changed(GtkComboBox *widget, gpointer user_data) {
-    DeckPlugin *self = DECK_PLUGIN(user_data);
+    OBSPlugin *self = OBS_PLUGIN(user_data);
+    MuteSourceData *data = obs_plugin_get_action_data(self);
     GtkTreeIter iter;
 
     if (gtk_combo_box_get_active_iter(widget, &iter)) {
         char *input;
         GtkTreeModel *store = gtk_combo_box_get_model(widget);
         gtk_tree_model_get(store, &iter, 0, &input, -1);
-        g_object_set(G_OBJECT(self), "source", input, NULL);
+
+        if (data->source != NULL) {
+            g_free(data->source);
+        }
+        data->source = g_strdup(input);
         g_free(input);
     }
 }
 
-void mute_source_config(DeckPlugin *self, GtkBox *parent) {
-    GtkWidget *label = gtk_label_new("Audio Source");
-    g_autofree gchar *current_source = NULL;
+static void mute_source_config(OBSPlugin *self, GtkBox *parent) {
+    MuteSourceData *data = obs_plugin_get_action_data(self);
 
-    g_object_get(G_OBJECT(self), "source", &current_source, NULL);
+    GtkWidget *label = gtk_label_new("Audio Source");
+    gchar *current_source = g_strdup(data->source);
 
     GtkListStore *store = gtk_list_store_new(1, G_TYPE_STRING);
 
@@ -114,44 +184,56 @@ void mute_source_config(DeckPlugin *self, GtkBox *parent) {
     gtk_cell_layout_set_attributes(GTK_CELL_LAYOUT(combo), GTK_CELL_RENDERER(renderer), "text", 0,
                                    NULL);
 
-    InputListData *data = g_new0(InputListData, 1);
-    data->combo = GTK_COMBO_BOX(combo);
-    data->selected_input = g_strdup(current_source);
+    InputListData *list_data = g_new0(InputListData, 1);
+    list_data->combo = GTK_COMBO_BOX(combo);
+    list_data->selected_input = g_strdup(current_source);
 
     ObsWs *ws = obs_ws_new();
-    obs_ws_get_input_list(ws, on_input_list, data);
+    obs_ws_get_input_list(ws, on_input_list, list_data);
 
     gtk_box_pack_start(parent, label, TRUE, FALSE, 5);
     gtk_box_pack_start(parent, combo, TRUE, FALSE, 5);
 
     g_object_unref(G_OBJECT(store));
+    g_free(current_source);
 }
 
-void mute_source_exec(DeckPlugin *self) {
-    char *source;
-    g_object_get(G_OBJECT(self), "source", &source, NULL);
-
-    if (source != NULL) {
+/* Execution */
+static void mute_source_exec(OBSPlugin *self) {
+    MuteSourceData *data = obs_plugin_get_action_data(self);
+    if (data != NULL && data->source != NULL) {
         ObsWs *ws = obs_ws_new();
-        obs_ws_toggle_input_mute(ws, source);
-        g_free(source);
+        obs_ws_toggle_input_mute(ws, data->source);
     }
 }
 
-void mute_source_save(DeckPlugin *self, char *group, GKeyFile *key_file) {
-    gchar *source;
-    g_object_get(G_OBJECT(self), "source", &source, NULL);
-
-    if (source != NULL) {
-        g_key_file_set_string(key_file, group, "source", source);
-        g_free(source);
+/* Serialization */
+static void mute_source_save(OBSPlugin *self, const char *group, GKeyFile *key_file) {
+    MuteSourceData *data = obs_plugin_get_action_data(self);
+    if (data != NULL && data->source != NULL) {
+        g_key_file_set_string(key_file, group, "source", data->source);
     }
 }
 
-void mute_source_load(DeckPlugin *self, char *group, GKeyFile *key_file) {
+static void mute_source_load(OBSPlugin *self, const char *group, GKeyFile *key_file) {
+    MuteSourceData *data = obs_plugin_get_action_data(self);
     g_autofree char *source = g_key_file_get_string(key_file, group, "source", NULL);
 
     if (source != NULL) {
-        g_object_set(G_OBJECT(self), "source", source, NULL);
+        if (data->source != NULL) {
+            g_free(data->source);
+        }
+        data->source = g_strdup(source);
     }
 }
+
+/* VTable export */
+const OBSActionVTable obs_mute_source_vtable = {
+    .init = mute_source_init,
+    .destroy = mute_source_destroy,
+    .config = mute_source_config,
+    .exec = mute_source_exec,
+    .save = mute_source_save,
+    .load = mute_source_load,
+    .render = NULL, /* Use default render */
+};

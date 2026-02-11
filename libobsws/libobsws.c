@@ -195,7 +195,6 @@ ObsWs *obs_ws_new() {
         mutex_initialized = TRUE;
     }
     if (global_ws == NULL) {
-        printf("create .....................\n");
         global_ws = g_object_new(OBS_TYPE_WS, NULL);
     }
     return global_ws;
@@ -676,7 +675,6 @@ static void on_identified_handler(struct wic_inst *inst, JsonObject *data);
 static bool on_message_handler(struct wic_inst *inst, enum wic_encoding encoding, bool fin,
                                const char *data, uint16_t size) {
 
-    printf("got message to process\n");
     if (message_buffer == NULL) {
         message_buffer = g_string_new_len(data, size);
     } else {
@@ -689,7 +687,6 @@ static bool on_message_handler(struct wic_inst *inst, enum wic_encoding encoding
         if (json_parser_load_from_data(parser, (const gchar *)message_buffer->str,
                                        message_buffer->len, &error)) {
             JsonNode *root = json_parser_get_root(parser);
-            printf("Got json...");
             if (JSON_NODE_HOLDS_OBJECT(root)) {
                 JsonObject *message = json_node_get_object(root);
 

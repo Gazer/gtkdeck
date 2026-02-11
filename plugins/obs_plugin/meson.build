@@ -1,6 +1,12 @@
 obs_plugin = static_library(
     'obs_plugin',
-    sources: files(['obs_plugin.c', 'change_scene.c', 'mute_source.c', 'toggle_recording.c']),
+    sources: files([
+        'obs_plugin.c',
+        'obs_action_types.h',
+        'actions/obs_change_scene.c',
+        'actions/obs_mute_source.c',
+        'actions/obs_toggle_recording.c'
+    ]),
     dependencies : gtkdeps,
     include_directories: deck_plugins_inc
 )

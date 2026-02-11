@@ -178,6 +178,7 @@ static void on_delete_clicked(GtkButton *button, gpointer user_data) {
 
 void on_menu_quit(GtkMenuItem *item, gpointer user_data) {
     GtkApplication *app = GTK_APPLICATION(user_data);
+    deck_grid_save_config(DECK_GRID(global_grid));
     g_application_quit(G_APPLICATION(app));
 }
 
@@ -192,6 +193,7 @@ void on_menu_toggle(GtkMenuItem *item, gpointer user_data) {
 
 gboolean on_window_delete_event(GtkWidget *widget, GdkEvent *event, gpointer user_data) {
     gtk_widget_hide(widget);
+    deck_grid_save_config(DECK_GRID(global_grid));
     return TRUE;
 }
 
