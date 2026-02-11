@@ -30,5 +30,11 @@
     <file alias="obs-mute-selected.png" compressed="true">assets/icons8-mute-72.png</file>
     <file alias="obs-recording.png" compressed="true">assets/icons8-resume-button-72.png</file>
     <file alias="obs-recording-selected.png" compressed="true">assets/icons8-stop-72.png</file>
+    <file alias="obs-source.png" compressed="true">assets/icons8-obs-source.png</file>
+    <file alias="obs-source-selected.png" compressed="true">assets/icons8-obs-source-selected.png</file>
+    <file alias="obs-chapter.png" compressed="true">assets/icons8-obs-chapter.png</file>
+    <file alias="obs-chapter-selected.png" compressed="true">assets/icons8-obs-chapter-selected.png</file>
+    <file alias="obs-screenshot.png" compressed="true">assets/icons8-obs-screenshot.png</file>
+    <file alias="obs-screenshot-selected.png" compressed="true">assets/icons8-obs-screenshot-selected.png</file>
   </gresource>
 </gresources>

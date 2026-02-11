@@ -5,7 +5,10 @@ obs_plugin = static_library(
         'obs_action_types.h',
         'actions/obs_change_scene.c',
         'actions/obs_mute_source.c',
-        'actions/obs_toggle_recording.c'
+        'actions/obs_toggle_recording.c',
+        'actions/obs_toggle_source_visibility.c',
+        'actions/obs_chapter_marker.c',
+        'actions/obs_screenshot.c'
     ]),
     dependencies : gtkdeps,
     include_directories: deck_plugins_inc

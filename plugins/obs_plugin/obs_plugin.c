@@ -7,9 +7,20 @@
 extern const OBSActionVTable obs_change_scene_vtable;
 extern const OBSActionVTable obs_mute_source_vtable;
 extern const OBSActionVTable obs_toggle_recording_vtable;
+extern const OBSActionVTable obs_toggle_source_visibility_vtable;
+extern const OBSActionVTable obs_chapter_marker_vtable;
+extern const OBSActionVTable obs_screenshot_vtable;
 
 /* Action codes */
-typedef enum { CHANGE_SCENE = 0, MUTE_SOURCE = 1, TOGGLE_RECORDING = 2, N_ACTIONS } OBSActionCodes;
+typedef enum {
+    CHANGE_SCENE = 0,
+    MUTE_SOURCE = 1,
+    TOGGLE_RECORDING = 2,
+    TOGGLE_SOURCE_VISIBILITY = 3,
+    CHAPTER_MARKER = 4,
+    SCREENSHOT = 5,
+    N_ACTIONS
+} OBSActionCodes;
 
 /* Forward declarations */
 static DeckPlugin *obs_plugin_clone(DeckPlugin *self, int action);
@@ -226,6 +237,16 @@ DeckPluginInfo OBS_PLUGIN_INFO = {
         {BUTTON_MODE_TOGGLE, "Toggle Recording", "/ar/com/p39/gtkdeck/plugins/obs-recording.png",
          "/ar/com/p39/gtkdeck/plugins/obs-recording-selected.png", TOGGLE_RECORDING,
          action_config_wrapper, action_exec_wrapper, action_save_wrapper, action_load_wrapper},
+        {BUTTON_MODE_TOGGLE, "Toggle Source Visibility",
+         "/ar/com/p39/gtkdeck/plugins/obs-source.png",
+         "/ar/com/p39/gtkdeck/plugins/obs-source-selected.png", TOGGLE_SOURCE_VISIBILITY,
+         action_config_wrapper, action_exec_wrapper, action_save_wrapper, action_load_wrapper},
+        {BUTTON_MODE_NORMAL, "Chapter Marker", "/ar/com/p39/gtkdeck/plugins/obs-chapter.png",
+         "/ar/com/p39/gtkdeck/plugins/obs-chapter-selected.png", CHAPTER_MARKER,
+         action_config_wrapper, action_exec_wrapper, action_save_wrapper, action_load_wrapper},
+        {BUTTON_MODE_NORMAL, "Screenshot", "/ar/com/p39/gtkdeck/plugins/obs-screenshot.png",
+         "/ar/com/p39/gtkdeck/plugins/obs-screenshot-selected.png", SCREENSHOT,
+         action_config_wrapper, action_exec_wrapper, action_save_wrapper, action_load_wrapper},
     },
 };
 
@@ -263,7 +284,8 @@ static void on_ws_connected(JsonObject *json, gpointer user_data) {
 
 /* Clone factory - assigns vtable based on action */
 static DeckPlugin *obs_plugin_clone(DeckPlugin *self, int action) {
-    OBSPlugin *clone = g_object_new(OBS_TYPE_PLUGIN, "name", "OBSPlugin", "action", &OBS_PLUGIN_INFO.actions[action], NULL);
+    OBSPlugin *clone = g_object_new(OBS_TYPE_PLUGIN, "name", "OBSPlugin", "action",
+                                    &OBS_PLUGIN_INFO.actions[action], NULL);
     OBSPluginPrivate *priv = obs_plugin_get_instance_private(clone);
 
     /* Assign vtable based on action code */
@@ -276,6 +298,15 @@ static DeckPlugin *obs_plugin_clone(DeckPlugin *self, int action) {
         break;
     case TOGGLE_RECORDING:
         priv->vtable = &obs_toggle_recording_vtable;
+        break;
+    case TOGGLE_SOURCE_VISIBILITY:
+        priv->vtable = &obs_toggle_source_visibility_vtable;
+        break;
+    case CHAPTER_MARKER:
+        priv->vtable = &obs_chapter_marker_vtable;
+        break;
+    case SCREENSHOT:
+        priv->vtable = &obs_screenshot_vtable;
         break;
     default:
         priv->vtable = NULL;

@@ -29,6 +29,9 @@ typedef struct _OBSActionVTable {
 extern const OBSActionVTable obs_change_scene_vtable;
 extern const OBSActionVTable obs_mute_source_vtable;
 extern const OBSActionVTable obs_toggle_recording_vtable;
+extern const OBSActionVTable obs_toggle_source_visibility_vtable;
+extern const OBSActionVTable obs_chapter_marker_vtable;
+extern const OBSActionVTable obs_screenshot_vtable;
 
 /* Helper to get/set action_data from plugin instance */
 void obs_plugin_set_action_data(OBSPlugin *self, void *data);

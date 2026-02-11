@@ -44,6 +44,13 @@ void obs_ws_get_input_mute(ObsWs *self, const char *input_name, result_callback 
                            gpointer user_data);
 void obs_ws_toggle_record(ObsWs *self);
 void obs_ws_get_record_status(ObsWs *self, result_callback callback, gpointer user_data);
+void obs_ws_set_scene_item_enabled(ObsWs *self, const char *scene_name, int scene_item_id,
+                                   gboolean enabled);
+void obs_ws_get_scene_item_list(ObsWs *self, const char *scene_name, result_callback callback,
+                                gpointer user_data);
+void obs_ws_set_record_chapter_marker(ObsWs *self, const char *chapter_name);
+void obs_ws_save_source_screenshot(ObsWs *self, const char *source_name, const char *image_format,
+                                   const char *image_file_path, int image_width, int image_height);
 
 const gchar *json_object_get_string_value(JsonObject *json, const gchar *key);
 const gboolean json_object_get_boolean_value(JsonObject *json, const gchar *key);

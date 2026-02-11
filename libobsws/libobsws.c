@@ -349,6 +349,140 @@ void obs_ws_get_record_status(ObsWs *self, result_callback callback, gpointer us
     }
 }
 
+void obs_ws_set_scene_item_enabled(ObsWs *self, const char *scene_name, int scene_item_id,
+                                   gboolean enabled) {
+    ObsWsClass *klass = OBS_WS_GET_CLASS(self);
+
+    int message_id = uwsc_message_id();
+    char request_id[20];
+    g_snprintf(request_id, sizeof(request_id), "%d", message_id);
+
+    // Build request data with proper types
+    JsonObject *request_data = json_object_new();
+    json_object_set_string_member(request_data, "sceneName", scene_name);
+    json_object_set_int_member(request_data, "sceneItemId", scene_item_id);
+    json_object_set_boolean_member(request_data, "sceneItemEnabled", enabled);
+
+    // Build the "d" envelope
+    JsonObject *d_object = json_object_new();
+    json_object_set_string_member(d_object, "requestId", request_id);
+    json_object_set_string_member(d_object, "requestType", "SetSceneItemEnabled");
+
+    JsonNode *rd_node = json_node_new(JSON_NODE_OBJECT);
+    json_node_set_object(rd_node, request_data);
+    json_object_set_member(d_object, "requestData", rd_node);
+    json_object_unref(request_data);
+
+    // Build full message with op code
+    JsonObject *root = json_object_new();
+    json_object_set_int_member(root, "op", OPCODE_REQUEST);
+
+    JsonNode *data_node = json_node_new(JSON_NODE_OBJECT);
+    json_node_set_object(data_node, d_object);
+    json_object_set_member(root, "d", data_node);
+
+    JsonGenerator *json = json_generator_new();
+    JsonNode *root_node = json_node_new(JSON_NODE_OBJECT);
+    json_node_set_object(root_node, root);
+    json_generator_set_root(json, root_node);
+
+    gsize len;
+    gchar *data = json_generator_to_data(json, &len);
+    printf(">>> SetSceneItemEnabled: %s\n", data);
+
+    LOCK_WS();
+    struct wic_inst *inst = klass->inst;
+    UNLOCK_WS();
+
+    if (inst != NULL) {
+        wic_send_text(inst, true, data, len);
+    }
+
+    g_free(data);
+    json_object_unref(d_object);
+    json_object_unref(root);
+    json_node_unref(root_node);
+    g_object_unref(json);
+}
+
+void obs_ws_get_scene_item_list(ObsWs *self, const char *scene_name, result_callback callback,
+                                gpointer user_data) {
+    ObsWsClass *klass = OBS_WS_GET_CLASS(self);
+
+    GHashTable *map = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
+    g_hash_table_insert(map, g_strdup("request-type"), g_strdup("GetSceneItemList"));
+    g_hash_table_insert(map, g_strdup("sceneName"), g_strdup(scene_name));
+
+    int message_id = uwsc_message_id();
+
+    LOCK_WS();
+    struct wic_inst *inst = klass->inst;
+    UNLOCK_WS();
+
+    if (inst != NULL) {
+        ws_send(inst, message_id, map, callback, user_data);
+    }
+
+    g_hash_table_unref(map);
+}
+
+void on_chapter_marker_set(JsonObject *json, gpointer user_data) { printf("chapter marker set\n"); }
+
+void obs_ws_set_record_chapter_marker(ObsWs *self, const char *chapter_name) {
+    ObsWsClass *klass = OBS_WS_GET_CLASS(self);
+
+    GHashTable *map = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
+    g_hash_table_insert(map, g_strdup("request-type"), g_strdup("SetRecordChapterMarker"));
+    if (chapter_name != NULL && strlen(chapter_name) > 0) {
+        g_hash_table_insert(map, g_strdup("markerName"), g_strdup(chapter_name));
+    }
+
+    int message_id = uwsc_message_id();
+
+    LOCK_WS();
+    struct wic_inst *inst = klass->inst;
+    UNLOCK_WS();
+
+    if (inst != NULL) {
+        ws_send(inst, message_id, map, on_chapter_marker_set, self);
+    }
+
+    g_hash_table_unref(map);
+}
+
+void on_screenshot_saved(JsonObject *json, gpointer user_data) { printf("screenshot saved\n"); }
+
+void obs_ws_save_source_screenshot(ObsWs *self, const char *source_name, const char *image_format,
+                                   const char *image_file_path, int image_width, int image_height) {
+    ObsWsClass *klass = OBS_WS_GET_CLASS(self);
+
+    GHashTable *map = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
+    g_hash_table_insert(map, g_strdup("request-type"), g_strdup("SaveSourceScreenshot"));
+    g_hash_table_insert(map, g_strdup("sourceName"), g_strdup(source_name));
+    g_hash_table_insert(map, g_strdup("imageFormat"), g_strdup(image_format));
+    if (image_file_path != NULL && strlen(image_file_path) > 0) {
+        g_hash_table_insert(map, g_strdup("imageFilePath"), g_strdup(image_file_path));
+    }
+    if (image_width > 0) {
+        g_hash_table_insert(map, g_strdup("imageWidth"), g_strdup_printf("%d", image_width));
+    }
+    if (image_height > 0) {
+        g_hash_table_insert(map, g_strdup("imageHeight"), g_strdup_printf("%d", image_height));
+    }
+
+    int message_id = uwsc_message_id();
+
+    LOCK_WS();
+    struct wic_inst *inst = klass->inst;
+    UNLOCK_WS();
+
+    if (inst != NULL) {
+        ws_send(inst, message_id, map, on_screenshot_saved, self);
+    }
+
+    g_hash_table_unref(map);
+}
+
 // Private
 
 const gchar *json_object_get_string_value(JsonObject *json, const gchar *key) {
@@ -480,9 +614,10 @@ static void ws_emit(const char *event, JsonObject *object) {
     GList *callback_list = NULL;
     GList *callback_data_list = NULL;
     g_hash_table_lookup_extended(klass->callbacks, event_to_emit, NULL, (gpointer *)&callback_list);
-    g_hash_table_lookup_extended(klass->callbacks_data, event_to_emit, NULL, (gpointer *)&callback_data_list);
+    g_hash_table_lookup_extended(klass->callbacks_data, event_to_emit, NULL,
+                                 (gpointer *)&callback_data_list);
     printf("got callback for %s ... calling\n", event_to_emit);
-    while (callback_list!= NULL) {
+    while (callback_list != NULL) {
         result_callback callback = (result_callback)callback_list->data;
         gpointer user_data = callback_data_list->data;
 
@@ -492,20 +627,23 @@ static void ws_emit(const char *event, JsonObject *object) {
         cb_data->user_data = user_data;
         g_idle_add(invoke_callback_idle, cb_data);
 
-        callback_list= callback_list->next;
-        callback_data_list= callback_data_list->next;
+        callback_list = callback_list->next;
+        callback_data_list = callback_data_list->next;
     }
     UNLOCK_WS();
 }
 
-void obs_ws_register_callback(ObsWs *self, const char *callbackId, result_callback callback, gpointer user_data) {
+void obs_ws_register_callback(ObsWs *self, const char *callbackId, result_callback callback,
+                              gpointer user_data) {
     ObsWsClass *klass = OBS_WS_GET_CLASS(self);
 
     LOCK_WS();
     GList *callback_list = NULL;
     GList *callback_data_list = NULL;
-    gboolean exists = g_hash_table_lookup_extended(klass->callbacks, callbackId, NULL, (gpointer *)&callback_list);
-    g_hash_table_lookup_extended(klass->callbacks_data, callbackId, NULL, (gpointer *)&callback_data_list);
+    gboolean exists = g_hash_table_lookup_extended(klass->callbacks, callbackId, NULL,
+                                                   (gpointer *)&callback_list);
+    g_hash_table_lookup_extended(klass->callbacks_data, callbackId, NULL,
+                                 (gpointer *)&callback_data_list);
 
     callback_list = g_list_append(callback_list, callback);
     callback_data_list = g_list_append(callback_data_list, user_data);
