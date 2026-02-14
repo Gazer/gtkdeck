@@ -7,8 +7,9 @@ assets_dir = join_paths(source_root, 'assets')
 subdir('system_plugin')
 subdir('obs_plugin')
 subdir('gtkdeck')
+subdir('cpu_plugin')
 
-dependencies = gtkdeps + [system_plugin_dep, obs_plugin_dep, gtkdeck_plugin_dep]
+dependencies = gtkdeps + [system_plugin_dep, obs_plugin_dep, gtkdeck_plugin_dep, cpu_plugin_dep]
 
 resource_data = files(
   'assets/icons8-text-72.png',

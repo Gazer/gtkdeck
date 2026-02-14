@@ -36,5 +36,6 @@
     <file alias="obs-chapter-selected.png" compressed="true">assets/icons8-obs-chapter-selected.png</file>
     <file alias="obs-screenshot.png" compressed="true">assets/icons8-obs-screenshot.png</file>
     <file alias="obs-screenshot-selected.png" compressed="true">assets/icons8-obs-screenshot-selected.png</file>
+    <file alias="cpu.png" compressed="true">assets/icons8-cpu-72.png</file>
   </gresource>
 </gresources>

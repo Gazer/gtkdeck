@@ -5,6 +5,7 @@
 #include <pango/pangocairo.h>
 
 // Plugins
+#include "cpu_plugin/cpu_plugin.h"
 #include "gtkdeck/gtkdeck_plugin.h"
 #include "obs_plugin/obs_plugin.h"
 #include "system_plugin/system_plugin.h"
@@ -233,7 +234,8 @@ static void deck_plugin_set_current_state(DeckPlugin *self) {
         pango_font_description_free(desc);
 
         cairo_save(cr);
-        cairo_set_source_rgb(cr, priv->label_color.red, priv->label_color.green, priv->label_color.blue);
+        cairo_set_source_rgb(cr, priv->label_color.red, priv->label_color.green,
+                             priv->label_color.blue);
         pango_cairo_update_layout(cr, layout);
         pango_layout_get_size(layout, &width, &height);
 
@@ -272,6 +274,7 @@ GList *deck_plugin_list() {
         deck_plugin_register(system_plugin_new());
         deck_plugin_register(obs_plugin_new());
         deck_plugin_register(gtkdeck_plugin_new());
+        deck_plugin_register(cpu_plugin_new());
     }
     return available_plugins;
 }
@@ -365,7 +368,8 @@ void on_label_pos_toggled(GtkToggleButton *widget, gpointer user_data) {
 
     DeckPlugin *self = DECK_PLUGIN(user_data);
     DeckPluginPrivate *priv = deck_plugin_get_instance_private(self);
-    DeckPluginLabelPos pos = (DeckPluginLabelPos)GPOINTER_TO_INT(g_object_get_data(G_OBJECT(widget), "pos_val"));
+    DeckPluginLabelPos pos =
+        (DeckPluginLabelPos)GPOINTER_TO_INT(g_object_get_data(G_OBJECT(widget), "pos_val"));
 
     priv->label_pos = pos;
     deck_plugin_reset(self);
@@ -385,7 +389,8 @@ void deck_plugin_get_config_widget(DeckPlugin *self, GtkBox *parent) {
     }
     GtkWidget *color_picker = gtk_color_button_new();
     gtk_color_chooser_set_rgba(GTK_COLOR_CHOOSER(color_picker), &(priv->label_color));
-    g_signal_connect(G_OBJECT(color_picker), "color-set", G_CALLBACK(on_label_color_selected), self);
+    g_signal_connect(G_OBJECT(color_picker), "color-set", G_CALLBACK(on_label_color_selected),
+                     self);
 
     GtkWidget *pos_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
     gtk_style_context_add_class(gtk_widget_get_style_context(pos_box), "linked");
@@ -453,7 +458,6 @@ void deck_plugin_set_image_from_file(DeckPlugin *self, DeckPluginState mode, cha
             cairo_surface_destroy(priv->preview_image);
         }
         priv->preview_image = gdk_cairo_surface_create_from_pixbuf(pixbuf, 0, NULL);
-
     } else {
         if (priv->preview_image_active != NULL) {
             cairo_surface_destroy(priv->preview_image_active);
@@ -595,7 +599,8 @@ DeckPlugin *deck_plugin_load(GKeyFile *key_file, char *group) {
     g_autofree char *color = g_key_file_get_string(key_file, group, "label_color", NULL);
     g_autofree char *action_name = g_key_file_get_string(key_file, group, "action_name", NULL);
     int code = g_key_file_get_integer(key_file, group, "code", NULL);
-    DeckPluginLabelPos label_pos = (DeckPluginLabelPos)g_key_file_get_integer(key_file, group, "label_pos", NULL);
+    DeckPluginLabelPos label_pos =
+        (DeckPluginLabelPos)g_key_file_get_integer(key_file, group, "label_pos", NULL);
 
     printf("  Name      : %s\n", name);
     printf("  ActionName: %s\n", action_name);
