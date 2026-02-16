@@ -162,7 +162,6 @@ static void on_deck_preview_update_app(GObject *gobject, GParamSpec *pspec, gpoi
                                     cairo_image_surface_get_height(surface));
     original = gdk_pixbuf_scale_simple(original, 72, 72, GDK_INTERP_HYPER);
 
-    printf("w = %d\n", gdk_pixbuf_get_width(original));
     gtk_image_set_from_pixbuf(GTK_IMAGE(user_data), original);
 }
 

@@ -5,9 +5,9 @@
 #include <pango/pangocairo.h>
 
 // Plugins
-#include "cpu_plugin/cpu_plugin.h"
 #include "gtkdeck/gtkdeck_plugin.h"
 #include "obs_plugin/obs_plugin.h"
+#include "system_monitor_plugin/system_monitor_plugin.h"
 #include "system_plugin/system_plugin.h"
 #include "test_plugin.h"
 
@@ -274,7 +274,7 @@ GList *deck_plugin_list() {
         deck_plugin_register(system_plugin_new());
         deck_plugin_register(obs_plugin_new());
         deck_plugin_register(gtkdeck_plugin_new());
-        deck_plugin_register(cpu_plugin_new());
+        deck_plugin_register(system_monitor_plugin_new());
     }
     return available_plugins;
 }
